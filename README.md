@@ -1,20 +1,24 @@
 # Drawing Board Pro
 
-一个面向中文用户的跨平台数字画板工作区，包含 Web 前端、Spring Boot 后端，以及 Qt 桌面封装能力。
+一个面向中文用户的跨平台数字画板项目，包含 Vue Web 前端、Spring Boot 后端，以及 Qt 桌面封装能力。
 
-## 项目概览
+打开即绘制，当前聚焦纯画板体验，并提供后端 API、桌面壳、发布脚本和完整项目文档。
+
+## 快速入口
+
+- **在线代码**: `main` 分支维护当前版本
+- **发布下载**: [v1.0.0 - Workspace Baseline](./releases/tag/v1.0.0)
+- **Windows 安装包**: `DrawingBoardPro-Setup-1.0.0.exe`
+- **Windows 便携版**: `DrawingBoardDesktop-windows-x64.zip`
+- **桌面打包说明**: `desktop/README.md`
+
+## 项目亮点
 
 - **前端体验**: 单页纯画板模式，打开即绘制
 - **核心能力**: 图层、文字、套索选择、滤镜、导出
 - **后端接口**: 用户、画布、图层、历史与导出 API
 - **桌面封装**: 基于 Qt WebEngine 的桌面壳与 Windows 打包脚本
 - **开发支持**: 提供 Docker、CI、联调脚本与项目文档
-
-## 发布下载
-
-- 当前发布页：`v1.0.0 - Workspace Baseline`
-- Windows 安装程序会作为独立资产上传到 GitHub Releases
-- 桌面产物说明见 `desktop/README.md`
 
 ## 技术栈
 
@@ -32,55 +36,41 @@
 - **PostgreSQL 15+**
 - **Gradle 8.8+** (通过Wrapper提供)
 
-### 开发环境设置
+### 本地开发
 
-1. **克隆项目**
-```bash
- git clone https://github.com/Purple-Hyacinthi/drawing_board.git
- cd drawing_board
-```
+后端和前端建议分别在两个终端中启动：
 
-2. **后端设置**
 ```bash
+git clone https://github.com/Purple-Hyacinthi/drawing_board.git
+cd drawing_board
+
+# 终端 1：后端
 cd drawing-board-backend
-
-# 复制环境配置
 cp .env.example .env
-
-# 使用Gradle Wrapper构建
 ./gradlew build
-
-# 运行应用
 ./gradlew bootRun
 ```
 
-3. **前端设置**
 ```bash
+# 终端 2：前端
 cd frontend
-
-# 安装依赖
 npm install
-
-# 启动开发服务器
 npm run dev
 ```
 
-4. **数据库设置**
-```sql
--- 创建数据库
-CREATE DATABASE drawing_board;
-```
+- 后端默认运行在 `http://127.0.0.1:8080`
+- 前端开发服务器默认运行在 `http://127.0.0.1:3000`
+- 数据库默认使用 PostgreSQL，联调脚本可切换到后端 `local-it` 配置
 
 ### Docker开发环境
-```bash
-# 使用Docker Compose启动所有服务
-docker-compose up -d
 
-# 访问应用
-# 前端: http://localhost:3000
-# 后端API: http://localhost:8080
-# 数据库: localhost:5432
+```bash
+docker-compose up -d
 ```
+
+- 前端: `http://localhost:3000`
+- 后端 API: `http://localhost:8080`
+- 数据库: `localhost:5432`
 
 ## 项目结构
 
@@ -110,66 +100,29 @@ drawing_board/
 
 ## 开发指南
 
-### 代码规范
-- **Java**: Google Java Style + Spotless
-- **TypeScript**: ESLint + Prettier + Vue风格指南
-- **Git**: Conventional Commits提交规范
+### 常用命令
 
-### 测试策略
+```bash
+# 后端测试
+cd drawing-board-backend && ./gradlew test
+
+# 前端构建
+cd frontend && npm run build
+
+# 本地联调
+./scripts/integration/integration.sh
+```
+
+### 开发约定
+
+- **Java**: Google Java Style + Spotless
+- **TypeScript**: ESLint + Prettier + Vue 风格指南
+- **Git**: Conventional Commits
 - **TDD流程**: 红-绿-重构
 - **测试重点**: 核心领域逻辑、模块边界、关键联调流程
 - **测试类型**: 单元测试、集成测试、E2E测试
 
-### 构建与部署
-```bash
-# 完整构建
-./scripts/build/build.sh
-
-# 运行所有测试
-./scripts/build/test.sh
-
-# 一键启动应用（开发模式）
-./scripts/dev/start-all.ps1
-
-# 关闭一键启动的前后端进程
-./scripts/dev/stop-all.ps1
-
-# 本地前后端联调（自动拉起后端，注册 -> 创建画布 -> 导出）
-./scripts/integration/integration.sh
-
-# 自动拉起前后端并联调（需要已安装前端依赖）
-./scripts/integration/integration.sh --auto-start-frontend
-
-# 如果前端未启动，可先跳过前端可访问性检查
-./scripts/integration/integration.sh --skip-frontend-check
-
-# Windows PowerShell
-./scripts/integration/integration.ps1
-
-# Windows CMD
-scripts\integration\integration.cmd
-
-# 启动脚本（Windows CMD）
-scripts\dev\start-all.cmd
-
-# 停止脚本（Windows CMD）
-scripts\dev\stop-all.cmd
-```
-
-联调脚本默认检查：
-- 后端健康：`http://127.0.0.1:8080/actuator/health`
-- 前端页面：`http://127.0.0.1:3000`
-
-一键启动脚本默认行为：
-- 自动启动后端（`SPRING_PROFILES_ACTIVE=local-it`）
-- 自动启动前端开发服务器（Vite）
-- 记录日志到 `tmp/start-backend.log` 与 `tmp/start-frontend.log`
-- 启动完成后自动打开浏览器
-
-`./scripts/integration/integration.sh` / `./scripts/integration/integration.ps1` / `scripts\integration\integration.cmd` 会自动使用后端 `local-it` 配置（H2内存库）拉起后端，避免依赖本机 PostgreSQL 凭据。
-
-并执行完整 API 流程：注册、登录、创建画布、创建图层、提交绘图、历史查询、撤销重做、导出 PNG/JPEG/SVG。
-导出文件默认输出到 `tmp/integration-artifacts/`。
+- 更多脚本、联调方式和部署信息见 `docs/DEVELOPMENT.md`、`docs/DEPLOYMENT.md`、`desktop/README.md`
 
 ## 文档
 
