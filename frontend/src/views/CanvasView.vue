@@ -172,6 +172,14 @@
           <button
             type="button"
             class="help-tab"
+            :class="{ 'help-tab-active': activeHelpTab === 'menu' }"
+            @click="activeHelpTab = 'menu'"
+          >
+            菜单说明
+          </button>
+          <button
+            type="button"
+            class="help-tab"
             :class="{ 'help-tab-active': activeHelpTab === 'about' }"
             @click="activeHelpTab = 'about'"
           >
@@ -205,7 +213,35 @@
           <p v-if="filteredShortcutTips.length === 0" class="help-empty">未找到匹配的快捷键</p>
         </div>
 
-        <div class="help-content" v-else>
+        <div class="help-content" v-else-if="activeHelpTab === 'menu'">
+          <section v-for="section in menuGuideSections" :key="section.title" class="help-section-card">
+            <div class="help-section-header">
+              <h3>{{ section.title }}</h3>
+              <p>{{ section.description }}</p>
+            </div>
+            <ul class="help-list">
+              <li v-for="item in section.items" :key="`${section.title}-${item}`">{{ item }}</li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="help-content help-about" v-else>
+          <section class="about-hero">
+            <div>
+              <p class="about-kicker">{{ runtimeModeLabel }}</p>
+              <h3>{{ appDisplayName }}</h3>
+              <p class="about-description">一个支持图层、选区、画笔、文字和滤镜的轻量绘图工具。</p>
+            </div>
+            <span class="about-version">v{{ appVersion }}</span>
+          </section>
+
+          <div class="about-facts">
+            <article v-for="fact in aboutFacts" :key="fact.label" class="about-fact-card">
+              <span>{{ fact.label }}</span>
+              <strong>{{ fact.value }}</strong>
+            </article>
+          </div>
+
           <ul class="help-list">
             <li v-for="line in aboutLines" :key="line">{{ line }}</li>
           </ul>
@@ -220,7 +256,8 @@
             type="button"
             class="menu-item"
             :class="{ 'menu-item-active': activeMenu === menu }"
-            @click.stop="toggleMenu(menu)"
+            @pointerdown.stop.prevent="toggleMenu(menu)"
+            @click.stop.prevent
           >
             {{ menu }}
           </button>
@@ -232,7 +269,8 @@
               type="button"
               class="menu-popup-item"
               :disabled="isMenuActionDisabled(action)"
-              @click="runMenuAction(action)"
+              @pointerdown.stop.prevent="runMenuAction(action)"
+              @click.stop.prevent
             >
               <span>{{ action.label }}</span>
               <span v-if="action.shortcut" class="menu-popup-shortcut">{{ action.shortcut }}</span>
@@ -241,6 +279,7 @@
         </div>
       </div>
       <div class="menu-right">
+        <span class="menu-version">v{{ appVersion }}</span>
         <button type="button" class="menu-action" @click="openNewDocumentDialog">新建</button>
         <button type="button" class="menu-action" @click="openLocalFile">打开</button>
         <button type="button" class="menu-action" @click="saveProject">保存项目</button>
@@ -252,10 +291,19 @@
 
     <div class="toolbar-bar">
       <div class="toolbar-group" v-if="showPresetControl">
-        <span class="toolbar-label">工具预设</span>
-        <select v-model="brushPresetId" class="toolbar-select" @change="handleBrushPresetChange">
-          <option v-for="preset in brushPresetItems" :key="preset.id" :value="preset.id">{{ preset.label }}</option>
-        </select>
+        <span class="toolbar-label">笔刷类型</span>
+        <div class="brush-type-strip" role="tablist" aria-label="笔刷类型">
+          <button
+            v-for="preset in brushPresetItems"
+            :key="preset.id"
+            type="button"
+            class="brush-type-btn"
+            :class="{ 'brush-type-btn-active': brushPresetId === preset.id && activeTool === preset.tool }"
+            @click="handleBrushPresetClick(preset.id)"
+          >
+            {{ preset.label }}
+          </button>
+        </div>
       </div>
 
       <div class="toolbar-group" v-if="activeTool === 'eraser'">
@@ -287,9 +335,18 @@
         <span class="toolbar-chip">{{ activeShapeLabel }}</span>
       </div>
 
-      <div class="toolbar-group" v-if="activeTool === 'text'">
-        <span class="toolbar-label">文字</span>
-        <input v-model="textDraft" class="toolbar-text-input" placeholder="输入文字后点击画布" />
+      <div class="toolbar-group toolbar-group-text" v-if="activeTool === 'text'">
+        <span class="toolbar-label">文字内容</span>
+        <textarea
+          v-model="textDraft"
+          class="toolbar-textarea"
+          rows="2"
+          placeholder="输入文字内容，可换行后点击画布"
+        />
+        <div class="toolbar-text-meta">
+          <span>{{ textLineCount }} 行</span>
+          <button type="button" class="toolbar-link-btn" @click="resetTextDraft">重置示例</button>
+        </div>
       </div>
 
       <div class="toolbar-group" v-if="activeTool === 'text'">
@@ -297,6 +354,11 @@
         <select v-model="textStyle.fontFamily" class="toolbar-select">
           <option v-for="font in fontOptions" :key="font.value" :value="font.value">{{ font.label }}</option>
         </select>
+      </div>
+
+      <div class="toolbar-group toolbar-group-text-preview" v-if="activeTool === 'text'">
+        <span class="toolbar-label">预览</span>
+        <div class="toolbar-font-preview" :style="textPreviewStyle">{{ textPreviewText }}</div>
       </div>
 
       <div class="toolbar-group" v-if="activeTool === 'text'">
@@ -388,8 +450,8 @@
           class="tool-btn"
           :class="{ 'tool-btn-active': activeTool === tool.id }"
           :title="tool.label"
-          @click="setActiveTool(tool.id)"
-        >
+            @click="handleToolSelection(tool.id)"
+          >
           <svg v-if="tool.iconType === 'symbol'" class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
             <use :href="`#${tool.id === 'shape' ? activeShapeIcon : tool.icon}`" />
           </svg>
@@ -421,6 +483,23 @@
           >
             <canvas ref="compositeCanvasRef" class="stage-canvas" :width="canvasWidth" :height="canvasHeight" />
             <canvas ref="previewCanvasRef" class="stage-canvas stage-preview" :width="canvasWidth" :height="canvasHeight" />
+            <div v-if="textEditor.active" class="canvas-text-editor" @pointerdown.stop>
+              <textarea
+                ref="textEditorInputRef"
+                v-model="textEditor.text"
+                class="canvas-text-editor-input"
+                :style="textEditorStyle"
+                placeholder="输入文字内容"
+                @pointerdown.stop
+              />
+              <div class="canvas-text-editor-toolbar" :style="textEditorToolbarStyle" @pointerdown.stop>
+                <button type="button" class="canvas-text-editor-btn canvas-text-editor-btn-primary" @click="applyTextEditor">
+                  应用
+                </button>
+                <button type="button" class="canvas-text-editor-btn" @click="cancelTextEditor">取消</button>
+                <span class="canvas-text-editor-hint">Ctrl+Enter 应用，Esc 取消</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -445,39 +524,39 @@
         </section>
 
         <section class="panel-card" v-if="showBrushStylePanel">
-          <h3>画笔样式</h3>
+          <h3>{{ brushPanelCopy.title }}</h3>
           <label class="field">
-            <span>名称</span>
+            <span>{{ brushPanelCopy.nameLabel }}</span>
             <input v-model="brushName" class="field-input" />
           </label>
 
           <label class="field">
-            <span>角度 {{ brushStyle.angle }}°</span>
+            <span>{{ brushPanelCopy.angleLabel }} {{ brushStyle.angle }}°</span>
             <input v-model.number="brushStyle.angle" type="range" min="0" max="180" class="field-range" />
           </label>
 
           <label class="field">
-            <span>圆度 {{ brushStyle.roundness }}%</span>
+            <span>{{ brushPanelCopy.roundnessLabel }} {{ brushStyle.roundness }}%</span>
             <input v-model.number="brushStyle.roundness" type="range" min="10" max="100" class="field-range" />
           </label>
 
           <label class="field">
-            <span>间距 {{ brushStyle.spacing }}%</span>
+            <span>{{ brushPanelCopy.spacingLabel }} {{ brushStyle.spacing }}%</span>
             <input v-model.number="brushStyle.spacing" type="range" min="1" max="80" class="field-range" />
           </label>
 
           <label class="field">
-            <span>硬度 {{ brushStyle.hardness }}%</span>
+            <span>{{ brushPanelCopy.hardnessLabel }} {{ brushStyle.hardness }}%</span>
             <input v-model.number="brushStyle.hardness" type="range" min="1" max="100" class="field-range" />
           </label>
 
           <label class="field">
-            <span>流量 {{ brushStyle.flow }}%</span>
+            <span>{{ brushPanelCopy.flowLabel }} {{ brushStyle.flow }}%</span>
             <input v-model.number="brushStyle.flow" type="range" min="1" max="100" class="field-range" />
           </label>
 
           <label class="field">
-            <span>大小控制</span>
+            <span>{{ brushPanelCopy.sizeModeLabel }}</span>
             <select v-model="brushStyle.sizeMode" class="field-select">
               <option value="fixed">固定</option>
               <option value="random">随机</option>
@@ -486,7 +565,7 @@
           </label>
 
           <label class="field" :class="{ 'field-disabled': brushStyle.sizeMode !== 'random' }">
-            <span>随机变量 {{ brushStyle.sizeJitter }}%</span>
+            <span>{{ brushPanelCopy.jitterLabel }} {{ brushStyle.sizeJitter }}%</span>
             <input
               v-model.number="brushStyle.sizeJitter"
               :disabled="brushStyle.sizeMode !== 'random'"
@@ -496,6 +575,7 @@
               class="field-range"
             />
           </label>
+          <p class="panel-tip">{{ brushPanelCopy.tip }}</p>
         </section>
 
         <section class="panel-card" v-if="activeTool === 'eraser'">
@@ -596,6 +676,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import iconBrush from '@/assets/tool-icons-svg/brush.svg'
 import iconPencil from '@/assets/tool-icons-svg/pencil.svg'
 import iconInk from '@/assets/tool-icons-svg/ink.svg'
+import iconPen from '@/assets/tool-icons-svg/pen.svg'
 import iconEraser from '@/assets/tool-icons-svg/eraser.svg'
 import iconEyedropper from '@/assets/tool-icons-svg/eyedropper.svg'
 import iconLasso from '@/assets/tool-icons-svg/lasso.svg'
@@ -623,12 +704,13 @@ declare global {
   }
 }
 
-type ToolId = 'select' | 'brush' | 'pencil' | 'ink' | 'eraser' | 'eyedropper' | 'lasso' | 'fill' | 'shape' | 'text'
+type ToolId = 'select' | 'brush' | 'pencil' | 'ink' | 'pen' | 'eraser' | 'eyedropper' | 'lasso' | 'fill' | 'shape' | 'text'
 type SizeMode = 'fixed' | 'random' | 'pressure'
 type LayerBlendMode = 'source-over' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten'
 type EraserMode = 'normal' | 'stroke'
 type SelectionKind = 'rect' | 'lasso'
-type HelpTab = 'usage' | 'shortcuts' | 'about'
+type HelpTab = 'usage' | 'shortcuts' | 'menu' | 'about'
+type PaintToolId = 'brush' | 'pencil' | 'ink' | 'pen'
 type ShapeType =
   | 'line'
   | 'curve'
@@ -651,6 +733,13 @@ type ShapeType =
 interface Point {
   x: number
   y: number
+}
+
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 interface ToolItem {
@@ -678,6 +767,8 @@ interface LayerSnapshot {
   opacity: number
   blendMode: LayerBlendMode
   image: string
+  strokeHistory?: SerializedLayerStrokeHistory
+  textElements?: SerializedTextElement[]
 }
 
 interface HistorySnapshot {
@@ -689,11 +780,66 @@ interface HistorySnapshot {
 }
 
 interface ProjectFile {
-  version: 1
+  version: 1 | 2 | 3
   width: number
   height: number
   documentName: string
   layers: LayerSnapshot[]
+}
+
+interface TextStyleSnapshot {
+  fontFamily: string
+  size: number
+  color: string
+  bold: boolean
+  italic: boolean
+}
+
+interface TextElementModel {
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+  text: string
+  style: TextStyleSnapshot
+}
+
+interface SerializedTextElement {
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+  text: string
+  style: TextStyleSnapshot
+}
+
+interface SerializedBrushRenderConfig {
+  color: string
+  size: number
+  opacity: number
+  style: BrushStyleState
+  pressureEnabled: boolean
+}
+
+interface SerializedBrushStrokeRecord {
+  id: string
+  tool: RecordablePaintTool
+  config: SerializedBrushRenderConfig
+  points: StrokePointSample[]
+  maxRadius: number
+  bounds: {
+    minX: number
+    minY: number
+    maxX: number
+    maxY: number
+  }
+}
+
+interface SerializedLayerStrokeHistory {
+  baseImage: string
+  strokes: SerializedBrushStrokeRecord[]
 }
 
 interface BrushStyleState {
@@ -706,7 +852,52 @@ interface BrushStyleState {
   sizeJitter: number
 }
 
-type BrushPresetId = 'soft-round' | 'pencil' | 'calligraphy' | 'marker'
+type RecordablePaintTool = PaintToolId | 'eraser'
+
+interface BrushRenderConfig {
+  color: string
+  size: number
+  opacity: number
+  style: BrushStyleState
+  pressureEnabled: boolean
+}
+
+interface StrokePointSample {
+  x: number
+  y: number
+  pressure: number
+  size: number
+}
+
+interface BrushStrokeRecord {
+  id: string
+  layerId: string
+  tool: RecordablePaintTool
+  config: BrushRenderConfig
+  points: StrokePointSample[]
+  maxRadius: number
+  bounds: {
+    minX: number
+    minY: number
+    maxX: number
+    maxY: number
+  }
+}
+
+interface LayerStrokeHistory {
+  baseRaster: HTMLCanvasElement | null
+  strokes: BrushStrokeRecord[]
+  strokeOrder: Map<string, number>
+  spatialIndex: Map<string, string[]>
+}
+
+interface StrokeHitMatch {
+  history: LayerStrokeHistory
+  stroke: BrushStrokeRecord
+  index: number
+}
+
+type BrushPresetId = PaintToolId
 
 interface BrushPreset {
   id: BrushPresetId
@@ -741,10 +932,11 @@ interface MenuActionItem {
 }
 
 const tools: ToolItem[] = [
-  { id: 'lasso', label: '套索', iconType: 'image', icon: iconLasso },
+  { id: 'lasso', label: '套索选择', iconType: 'image', icon: iconLasso },
   { id: 'brush', label: '画笔', iconType: 'image', icon: iconBrush },
   { id: 'pencil', label: '铅笔', iconType: 'image', icon: iconPencil },
   { id: 'ink', label: '毛笔', iconType: 'image', icon: iconInk },
+  { id: 'pen', label: '钢笔', iconType: 'image', icon: iconPen },
   { id: 'eraser', label: '橡皮', iconType: 'image', icon: iconEraser },
   { id: 'fill', label: '填充', iconType: 'image', icon: iconFill },
   { id: 'eyedropper', label: '拾色器', iconType: 'image', icon: iconEyedropper },
@@ -774,70 +966,70 @@ const shapeItems: ShapeItem[] = [
 
 const brushPresetItems: BrushPreset[] = [
   {
-    id: 'soft-round',
-    label: '软圆画笔',
+    id: 'brush',
+    label: '画笔',
     tool: 'brush',
-    color: '#101114',
-    size: 18,
-    opacity: 95,
+    color: '#000000',
+    size: 12,
+    opacity: 60,
     style: {
       angle: 0,
       roundness: 100,
-      spacing: 12,
-      hardness: 78,
-      flow: 90,
+      spacing: 10,
+      hardness: 42,
+      flow: 82,
       sizeMode: 'pressure',
-      sizeJitter: 16
+      sizeJitter: 0
     }
   },
   {
     id: 'pencil',
-    label: '工程铅笔',
+    label: '铅笔',
     tool: 'pencil',
-    color: '#1f2937',
-    size: 6,
-    opacity: 100,
+    color: '#555555',
+    size: 2,
+    opacity: 76,
     style: {
       angle: 0,
       roundness: 100,
-      spacing: 6,
-      hardness: 100,
+      spacing: 16,
+      hardness: 86,
       flow: 100,
       sizeMode: 'fixed',
       sizeJitter: 0
     }
   },
   {
-    id: 'calligraphy',
-    label: '书法毛笔',
+    id: 'ink',
+    label: '毛笔',
     tool: 'ink',
-    color: '#0f172a',
-    size: 24,
-    opacity: 88,
+    color: '#000000',
+    size: 14,
+    opacity: 100,
     style: {
-      angle: 38,
-      roundness: 42,
-      spacing: 18,
-      hardness: 86,
-      flow: 74,
+      angle: 18,
+      roundness: 88,
+      spacing: 8,
+      hardness: 88,
+      flow: 100,
       sizeMode: 'pressure',
-      sizeJitter: 10
+      sizeJitter: 0
     }
   },
   {
-    id: 'marker',
-    label: '马克笔',
-    tool: 'brush',
-    color: '#0ea5e9',
-    size: 20,
-    opacity: 82,
+    id: 'pen',
+    label: '钢笔',
+    tool: 'pen',
+    color: '#000000',
+    size: 4,
+    opacity: 100,
     style: {
       angle: 0,
-      roundness: 72,
-      spacing: 22,
-      hardness: 62,
-      flow: 64,
-      sizeMode: 'fixed',
+      roundness: 100,
+      spacing: 7,
+      hardness: 100,
+      flow: 100,
+      sizeMode: 'pressure',
       sizeJitter: 0
     }
   }
@@ -860,6 +1052,7 @@ const viewportRef = ref<HTMLDivElement | null>(null)
 const stageRef = ref<HTMLDivElement | null>(null)
 const compositeCanvasRef = ref<HTMLCanvasElement | null>(null)
 const previewCanvasRef = ref<HTMLCanvasElement | null>(null)
+const textEditorInputRef = ref<HTMLTextAreaElement | null>(null)
 
 let desktopNativeBridge: DesktopNativeBridge | null = null
 let nativeBridgeLoading: Promise<DesktopNativeBridge | null> | null = null
@@ -885,16 +1078,17 @@ const newDocumentForm = reactive({
 
 const activeTool = ref<ToolId>('brush')
 const lastPaintTool = ref<ToolId>('brush')
-const brushPresetId = ref<BrushPresetId>('soft-round')
-const brushName = ref('软圆画笔')
-const brushColor = ref('#101114')
-const brushSize = ref(18)
-const brushOpacity = ref(95)
+const brushPresetId = ref<BrushPresetId>('brush')
+const brushName = ref('画笔')
+const brushColor = ref('#000000')
+const brushSize = ref(12)
+const brushOpacity = ref(60)
 const eraserMode = ref<EraserMode>('normal')
 const shapeType = ref<ShapeType>('line')
-const textDraft = ref('示例文字')
+const defaultTextDraft = '示例文字\n点击画布后插入'
+const textDraft = ref(defaultTextDraft)
 const textStyle = reactive({
-  fontFamily: 'Noto Sans SC',
+  fontFamily: 'MiSans',
   size: 48,
   color: '#101114',
   bold: false,
@@ -906,6 +1100,8 @@ const pressureDetected = ref(false)
 const currentPressure = ref(1)
 
 const fontOptions = [
+  { label: 'MiSans（内置）', value: 'MiSans' },
+  { label: 'OPPOSans（内置）', value: 'OPPOSans' },
   { label: '思源黑体 Noto Sans SC', value: 'Noto Sans SC' },
   { label: '思源宋体 Noto Serif SC', value: 'Noto Serif SC' },
   { label: '思源黑体 Source Han Sans SC', value: 'Source Han Sans SC' },
@@ -917,6 +1113,57 @@ const fontOptions = [
   { label: 'OPPOSans', value: 'OPPOSans' }
 ] as const
 
+const textLineCount = computed(() => {
+  const source = textEditor.active ? textEditor.text : textDraft.value
+  const normalized = source.replace(/\r\n/g, '\n').trim()
+  if (!normalized) {
+    return 0
+  }
+
+  return normalized.split('\n').length
+})
+
+const textPreviewText = computed(() => {
+  const source = textEditor.active ? textEditor.text : textDraft.value
+  const normalized = source.replace(/\r\n/g, '\n').trim()
+  if (!normalized) {
+    return '文字预览'
+  }
+
+  return normalized.split('\n')[0] || '文字预览'
+})
+
+const textPreviewStyle = computed(() => ({
+  fontFamily: `"${textStyle.fontFamily}", "MiSans", "OPPOSans", "Noto Sans SC", "Microsoft YaHei", sans-serif`,
+  fontSize: `${clamp(Math.round(textStyle.size), 8, 360)}px`,
+  fontWeight: textStyle.bold ? '700' : '400',
+  fontStyle: textStyle.italic ? 'italic' : 'normal',
+  color: textStyle.color
+}))
+
+const textEditorStyle = computed(() => ({
+  left: `${textEditor.x}px`,
+  top: `${textEditor.y}px`,
+  width: `${textEditor.width}px`,
+  height: `${textEditor.height}px`,
+  fontFamily: `"${textStyle.fontFamily}", "MiSans", "OPPOSans", "Noto Sans SC", "Microsoft YaHei", sans-serif`,
+  fontSize: `${clamp(Math.round(textStyle.size), 8, 360)}px`,
+  fontWeight: textStyle.bold ? '700' : '400',
+  fontStyle: textStyle.italic ? 'italic' : 'normal',
+  color: textStyle.color,
+  lineHeight: `${Math.max(12, Math.round(clamp(Math.round(textStyle.size), 8, 360) * 1.35))}px`
+}))
+
+const textEditorToolbarStyle = computed(() => ({
+  left: `${textEditor.x}px`,
+  top: `${Math.min(canvasHeight.value - 36, textEditor.y + textEditor.height + 8)}px`
+}))
+
+const textEditorResizeHandleStyle = computed(() => ({
+  left: `${textEditor.x + textEditor.width - 8}px`,
+  top: `${textEditor.y + textEditor.height - 8}px`
+}))
+
 const usageTips = [
   '画布移动默认使用鼠标中键拖动，按住空格可临时拖动。',
   '文字工具可用 Ctrl+B 与 Ctrl+I 切换粗体和斜体。',
@@ -924,10 +1171,54 @@ const usageTips = [
   '图层合并与滤镜操作都会写入历史，可用 Ctrl+Z 撤销。'
 ] as const
 
+const appDisplayName = computed(() => import.meta.env.VITE_APP_NAME || 'Drawing Board Pro')
+const appVersion = __APP_VERSION__
+const runtimeModeLabel = computed(() => (isDesktopRuntime() ? '桌面版运行环境' : '浏览器运行环境'))
+
+const menuGuideSections = [
+  {
+    title: '文件',
+    description: '负责文档创建、打开、保存与导出。',
+    items: ['新建文档快速初始化画布尺寸和背景色。', '支持导入本地图片，并导出 PNG 或 SVG 结果。']
+  },
+  {
+    title: '编辑',
+    description: '围绕当前编辑状态进行撤销和选区处理。',
+    items: ['撤销与重做会记录图层绘制、滤镜与合并操作。', '浮动选区可应用到图层，也可一键取消。']
+  },
+  {
+    title: '图像',
+    description: '用于整体画布适配，以及当前图层的旋转翻转。',
+    items: ['适应窗口会重新计算缩放，让画布完整显示。', '旋转与翻转仅对当前可编辑图层生效。']
+  },
+  {
+    title: '图层',
+    description: '管理多图层结构、顺序与合并流程。',
+    items: ['支持新建、复制、删除、上移和下移图层。', '可向下合并或直接合并所有可见图层。']
+  },
+  {
+    title: '文字 / 滤镜',
+    description: '补充版式表达和后期效果。',
+    items: ['文字菜单可切换文字工具并快速调整字号、粗斜体。', '滤镜菜单提供黑白、棕褐、反相、模糊和锐化等效果。']
+  },
+  {
+    title: '视图 / 窗口 / 帮助',
+    description: '聚焦工作区显示控制与使用说明。',
+    items: ['视图菜单支持缩放、适应窗口和重置视图。', '窗口菜单可控制右侧面板并重置工作区布局，帮助菜单集中展示提示、快捷键与版本信息。']
+  }
+] as const
+
+const aboutFacts = computed(() => [
+  { label: '应用名称', value: appDisplayName.value },
+  { label: 'App 版本', value: `v${appVersion}` },
+  { label: '运行环境', value: runtimeModeLabel.value },
+  { label: '核心能力', value: '图层 / 选区 / 文字 / 滤镜' }
+])
+
 const aboutLines = [
-  'Drawing Board Pro',
-  '一个支持图层、选区、画笔和滤镜的轻量绘图工具。',
-  '当前版本: 1.0.0'
+  '内置多图层绘制、选区编辑、文字排版与滤镜处理能力。',
+  '菜单栏已按文件、编辑、图像、图层、文字、滤镜、视图、窗口、帮助进行分组。',
+  '帮助中心会同步展示当前 App 版本与运行环境信息。'
 ] as const
 
 const brushStyle = reactive<BrushStyleState>({
@@ -964,6 +1255,7 @@ const drawState = reactive({
   panning: false,
   movingSelection: false,
   selectingBox: false,
+  textBoxSelecting: false,
   lassoSelecting: false,
   lassoPoints: [] as Point[],
   strokeEraseChanged: false,
@@ -971,6 +1263,8 @@ const drawState = reactive({
   lastPoint: null as Point | null,
   startPoint: null as Point | null,
   lastPressure: 1,
+  lastStrokeSize: 0,
+  lastTimestamp: 0,
   panStartX: 0,
   panStartY: 0,
   pointerStartX: 0,
@@ -997,8 +1291,35 @@ const selectionState = reactive({
   boxEndY: 0
 })
 
+type TextEditorMode = 'create' | 'edit'
+type TextEditorInteraction = 'idle' | 'move' | 'resize'
+
+const textEditor = reactive({
+  active: false,
+  layerId: null as string | null,
+  textId: null as string | null,
+  mode: 'create' as TextEditorMode,
+  interaction: 'idle' as TextEditorInteraction,
+  x: 0,
+  y: 0,
+  width: 260,
+  height: 120,
+  text: '',
+  pointerId: null as number | null,
+  anchorX: 0,
+  anchorY: 0,
+  startX: 0,
+  startY: 0,
+  startWidth: 0,
+  startHeight: 0
+})
+
 const layerRasterMap = new Map<string, HTMLCanvasElement>()
+const layerStrokeHistoryMap = new Map<string, LayerStrokeHistory>()
+const layerTextMap = new Map<string, TextElementModel[]>()
 let selectionRaster: HTMLCanvasElement | null = null
+let activeRecordedStroke: BrushStrokeRecord | null = null
+const hoverStrokePreviewId = ref<string | null>(null)
 
 const activeLayer = computed(() => layers.value.find((layer) => layer.id === activeLayerId.value) ?? null)
 const hasEditableActiveLayer = computed(() => Boolean(activeLayer.value && !activeLayer.value.locked))
@@ -1038,9 +1359,9 @@ const activeToolLabel = computed(() => tools.find((tool) => tool.id === activeTo
 const activeShapeItem = computed(() => shapeItems.find((item) => item.value === shapeType.value) ?? shapeItems[0])
 const activeShapeLabel = computed(() => activeShapeItem.value?.label ?? '直线')
 const activeShapeIcon = computed(() => activeShapeItem.value?.icon ?? 'icon-line')
-const showPresetControl = computed(() => activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink')
+const showPresetControl = computed(() => activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink' || activeTool.value === 'pen')
 const showColorControl = computed(() => {
-  return activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink' || activeTool.value === 'shape' || activeTool.value === 'fill'
+  return activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink' || activeTool.value === 'pen' || activeTool.value === 'shape' || activeTool.value === 'fill'
 })
 const showSizeControl = computed(() => {
   if (activeTool.value === 'select' || activeTool.value === 'lasso' || activeTool.value === 'fill' || activeTool.value === 'text') {
@@ -1069,9 +1390,68 @@ const showPressureControl = computed(() => {
     return eraserMode.value === 'normal'
   }
 
-  return activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink'
+  return activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink' || activeTool.value === 'pen'
 })
-const showBrushStylePanel = computed(() => activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink')
+const showBrushStylePanel = computed(() => activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink' || activeTool.value === 'pen')
+const brushPanelCopy = computed(() => {
+  if (activeTool.value === 'pencil') {
+    return {
+      title: '铅笔设置',
+      nameLabel: '笔刷名称',
+      angleLabel: '笔锋角度',
+      roundnessLabel: '线芯圆度',
+      spacingLabel: '颗粒密度',
+      hardnessLabel: '纸面摩擦',
+      flowLabel: '上色浓度',
+      sizeModeLabel: '线宽控制',
+      jitterLabel: '颗粒扰动',
+      tip: '铅笔保持细线和半透明，颗粒感主要由间距与纸面摩擦共同影响。'
+    }
+  }
+
+  if (activeTool.value === 'ink') {
+    return {
+      title: '毛笔设置',
+      nameLabel: '笔刷名称',
+      angleLabel: '笔锋角度',
+      roundnessLabel: '笔腹饱满度',
+      spacingLabel: '落笔密度',
+      hardnessLabel: '墨边凝聚',
+      flowLabel: '出墨量',
+      sizeModeLabel: '笔锋控制',
+      jitterLabel: '飞白扰动',
+      tip: '毛笔会随速度显著变细，快速拖动时会带一点轻微枯笔和飞白感。'
+    }
+  }
+
+  if (activeTool.value === 'pen') {
+    return {
+      title: '钢笔设置',
+      nameLabel: '笔刷名称',
+      angleLabel: '笔尖角度',
+      roundnessLabel: '笔尖圆润',
+      spacingLabel: '走墨密度',
+      hardnessLabel: '硬边强度',
+      flowLabel: '出墨稳定度',
+      sizeModeLabel: '压力映射',
+      jitterLabel: '笔锋扰动',
+      tip: '钢笔保持利落硬边，速度只做轻微粗细变化，收笔会略微加重。'
+    }
+  }
+
+  return {
+    title: '画笔设置',
+    nameLabel: '笔刷名称',
+    angleLabel: '笔触角度',
+    roundnessLabel: '软刷圆度',
+    spacingLabel: '叠色密度',
+    hardnessLabel: '边缘柔化',
+    flowLabel: '颜料流量',
+    sizeModeLabel: '粗细控制',
+    jitterLabel: '边缘扰动',
+    tip: '画笔笔触更软、羽化更重，慢速会更厚实，快速会更轻盈。'
+  }
+})
 const stageCursor = computed(() => {
   if (drawState.panning) {
     return 'grabbing'
@@ -1265,7 +1645,7 @@ const shortcutTips = computed<ShortcutTipItem[]>(() => {
 
   const extraShortcuts: ShortcutTipItem[] = [
     { key: 'Ctrl+Y', description: '重做（兼容快捷键）' },
-    { key: 'B / P / E / I / G / L / U / T / M / V', description: '快速切换工具' },
+    { key: 'B / P / E / I / G / L / U / T / M / V', description: '快速切换工具，M / V 均切到套索选择' },
     { key: 'Space', description: '临时拖动画布' }
   ]
 
@@ -1342,6 +1722,18 @@ watch([canvasWidth, canvasHeight], ([width, height]) => {
   canvasSizeDraft.height = height
 }, { immediate: true })
 
+watch(textDraft, (value) => {
+  if (textEditor.active && value !== textEditor.text) {
+    textEditor.text = value
+  }
+})
+
+watch(() => textEditor.text, (value) => {
+  if (textEditor.active && value !== textDraft.value) {
+    textDraft.value = value
+  }
+})
+
 watch(sidePanelVisible, () => {
   nextTick(() => {
     fitCanvasToViewport()
@@ -1390,6 +1782,83 @@ function createId() {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
+}
+
+function lerp(from: number, to: number, amount: number) {
+  return from + (to - from) * amount
+}
+
+void lerp
+
+function cloneTextStyleSnapshot(style: TextStyleSnapshot): TextStyleSnapshot {
+  return {
+    fontFamily: style.fontFamily,
+    size: clamp(Math.round(style.size), 8, 360),
+    color: style.color,
+    bold: style.bold,
+    italic: style.italic
+  }
+}
+
+function captureCurrentTextStyle(): TextStyleSnapshot {
+  return cloneTextStyleSnapshot({
+    fontFamily: textStyle.fontFamily || 'MiSans',
+    size: textStyle.size,
+    color: textStyle.color,
+    bold: textStyle.bold,
+    italic: textStyle.italic
+  })
+}
+
+function applyTextStyleSnapshot(style: TextStyleSnapshot) {
+  textStyle.fontFamily = style.fontFamily || 'MiSans'
+  textStyle.size = clamp(Math.round(style.size), 8, 360)
+  textStyle.color = style.color || '#101114'
+  textStyle.bold = style.bold === true
+  textStyle.italic = style.italic === true
+}
+
+function getLayerTextElements(layerId: string) {
+  let items = layerTextMap.get(layerId)
+  if (!items) {
+    items = []
+    layerTextMap.set(layerId, items)
+  }
+  return items
+}
+
+function cloneTextElement(element: TextElementModel): TextElementModel {
+  return {
+    id: element.id,
+    x: element.x,
+    y: element.y,
+    width: element.width,
+    height: element.height,
+    text: element.text,
+    style: cloneTextStyleSnapshot(element.style)
+  }
+}
+
+function serializeLayerTextElements(layerId: string) {
+  return getLayerTextElements(layerId).map((item) => cloneTextElement(item))
+}
+
+function restoreLayerTextElements(layerId: string, items?: SerializedTextElement[]) {
+  const nextItems = Array.isArray(items)
+    ? items
+        .filter((item) => item && typeof item.text === 'string')
+        .map((item) => ({
+          id: typeof item.id === 'string' && item.id ? item.id : createId(),
+          x: clamp(Number(item.x ?? 0), 0, canvasWidth.value),
+          y: clamp(Number(item.y ?? 0), 0, canvasHeight.value),
+          width: clamp(Number(item.width ?? 240), 120, canvasWidth.value),
+          height: clamp(Number(item.height ?? 96), 56, canvasHeight.value),
+          text: item.text,
+          style: cloneTextStyleSnapshot(item.style ?? captureCurrentTextStyle())
+        }))
+    : []
+
+  layerTextMap.set(layerId, nextItems)
 }
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
@@ -1539,13 +2008,23 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
   })
 }
 
+function getCanvas2DContext(canvas: HTMLCanvasElement | null, willReadFrequently = false) {
+  if (!canvas) {
+    return null
+  }
+
+  return willReadFrequently
+    ? canvas.getContext('2d', { willReadFrequently: true })
+    : canvas.getContext('2d')
+}
+
 function createLayerRaster(width: number, height: number, fillColor: string | null = null) {
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
 
   if (fillColor) {
-    const context = canvas.getContext('2d')
+    const context = getCanvas2DContext(canvas, true)
     if (context) {
       context.save()
       context.fillStyle = fillColor
@@ -1555,6 +2034,15 @@ function createLayerRaster(width: number, height: number, fillColor: string | nu
   }
 
   return canvas
+}
+
+function cloneRaster(source: HTMLCanvasElement) {
+  const clone = createLayerRaster(source.width, source.height)
+  const context = getCanvas2DContext(clone, true)
+  if (context) {
+    context.drawImage(source, 0, 0)
+  }
+  return clone
 }
 
 function syncDisplayCanvasSize() {
@@ -1573,11 +2061,11 @@ function syncDisplayCanvasSize() {
 }
 
 function getCompositeContext() {
-  return compositeCanvasRef.value?.getContext('2d') ?? null
+  return getCanvas2DContext(compositeCanvasRef.value, true)
 }
 
 function getPreviewContext() {
-  return previewCanvasRef.value?.getContext('2d') ?? null
+  return getCanvas2DContext(previewCanvasRef.value)
 }
 
 function getLayerRaster(layerId: string) {
@@ -1585,8 +2073,300 @@ function getLayerRaster(layerId: string) {
 }
 
 function getLayerContext(layerId: string) {
-  return getLayerRaster(layerId)?.getContext('2d') ?? null
+  return getCanvas2DContext(getLayerRaster(layerId), true)
 }
+
+function cloneBrushStyleState(style: BrushStyleState): BrushStyleState {
+  return {
+    angle: style.angle,
+    roundness: style.roundness,
+    spacing: style.spacing,
+    hardness: style.hardness,
+    flow: style.flow,
+    sizeMode: style.sizeMode,
+    sizeJitter: style.sizeJitter
+  }
+}
+
+function createBrushRenderConfig(): BrushRenderConfig {
+  return {
+    color: brushColor.value,
+    size: brushSize.value,
+    opacity: brushOpacity.value,
+    style: cloneBrushStyleState(brushStyle),
+    pressureEnabled: pressureEnabled.value
+  }
+}
+
+function isPaintTool(tool: ToolId): tool is PaintToolId {
+  return tool === 'brush' || tool === 'pencil' || tool === 'ink' || tool === 'pen'
+}
+
+function isRecordablePaintTool(tool: ToolId): tool is RecordablePaintTool {
+  return isPaintTool(tool) || tool === 'eraser'
+}
+void isRecordablePaintTool
+
+function isRecordableDrawableStroke(tool: RecordablePaintTool) {
+  return tool !== 'eraser'
+}
+void isRecordableDrawableStroke
+
+const strokeSpatialCellSize = 96
+
+function getStrokeSearchPadding(stroke: BrushStrokeRecord) {
+  return Math.ceil(Math.max(3, stroke.maxRadius * 0.25))
+}
+
+function getStrokeSpatialKey(cellX: number, cellY: number) {
+  return `${cellX}:${cellY}`
+}
+
+function forEachStrokeSpatialCell(left: number, top: number, right: number, bottom: number, visit: (key: string) => void) {
+  const normalizedLeft = Math.max(0, Math.min(left, right))
+  const normalizedTop = Math.max(0, Math.min(top, bottom))
+  const normalizedRight = Math.max(normalizedLeft, Math.max(left, right))
+  const normalizedBottom = Math.max(normalizedTop, Math.max(top, bottom))
+  const startCellX = Math.floor(normalizedLeft / strokeSpatialCellSize)
+  const endCellX = Math.floor(normalizedRight / strokeSpatialCellSize)
+  const startCellY = Math.floor(normalizedTop / strokeSpatialCellSize)
+  const endCellY = Math.floor(normalizedBottom / strokeSpatialCellSize)
+
+  for (let cellY = startCellY; cellY <= endCellY; cellY += 1) {
+    for (let cellX = startCellX; cellX <= endCellX; cellX += 1) {
+      visit(getStrokeSpatialKey(cellX, cellY))
+    }
+  }
+}
+
+function addStrokeToSpatialIndex(history: LayerStrokeHistory, stroke: BrushStrokeRecord) {
+  const padding = getStrokeSearchPadding(stroke)
+  forEachStrokeSpatialCell(
+    stroke.bounds.minX - padding,
+    stroke.bounds.minY - padding,
+    stroke.bounds.maxX + padding,
+    stroke.bounds.maxY + padding,
+    (key) => {
+      const ids = history.spatialIndex.get(key)
+      if (ids) {
+        ids.push(stroke.id)
+        return
+      }
+      history.spatialIndex.set(key, [stroke.id])
+    }
+  )
+}
+
+function removeStrokeFromSpatialIndex(history: LayerStrokeHistory, stroke: BrushStrokeRecord) {
+  const padding = getStrokeSearchPadding(stroke)
+  forEachStrokeSpatialCell(
+    stroke.bounds.minX - padding,
+    stroke.bounds.minY - padding,
+    stroke.bounds.maxX + padding,
+    stroke.bounds.maxY + padding,
+    (key) => {
+      const ids = history.spatialIndex.get(key)
+      if (!ids) {
+        return
+      }
+
+      const nextIds = ids.filter((id) => id !== stroke.id)
+      if (nextIds.length === 0) {
+        history.spatialIndex.delete(key)
+        return
+      }
+      history.spatialIndex.set(key, nextIds)
+    }
+  )
+}
+
+function appendStrokeToHistory(history: LayerStrokeHistory, stroke: BrushStrokeRecord) {
+  const nextIndex = history.strokes.length
+  history.strokes.push(stroke)
+  history.strokeOrder.set(stroke.id, nextIndex)
+  addStrokeToSpatialIndex(history, stroke)
+}
+
+function removeStrokeFromHistory(history: LayerStrokeHistory, index: number) {
+  const removed = history.strokes[index]
+  if (!removed) {
+    return null
+  }
+
+  history.strokes.splice(index, 1)
+  history.strokeOrder.delete(removed.id)
+  removeStrokeFromSpatialIndex(history, removed)
+
+  for (let nextIndex = index; nextIndex < history.strokes.length; nextIndex += 1) {
+    history.strokeOrder.set(history.strokes[nextIndex]!.id, nextIndex)
+  }
+
+  return removed
+}
+
+function createLayerStrokeHistory(baseRaster: HTMLCanvasElement | null, strokes: BrushStrokeRecord[] = []) {
+  const history: LayerStrokeHistory = {
+    baseRaster,
+    strokes: [],
+    strokeOrder: new Map(),
+    spatialIndex: new Map()
+  }
+
+  for (const stroke of strokes) {
+    appendStrokeToHistory(history, stroke)
+  }
+
+  return history
+}
+
+function getLayerStrokeHistory(layerId: string) {
+  let history = layerStrokeHistoryMap.get(layerId)
+  if (!history) {
+    history = createLayerStrokeHistory(null)
+    layerStrokeHistoryMap.set(layerId, history)
+  }
+  return history
+}
+void getLayerStrokeHistory
+
+function resetLayerStrokeHistoryFromCurrent(layerId: string) {
+  const raster = getLayerRaster(layerId)
+  layerStrokeHistoryMap.set(layerId, createLayerStrokeHistory(raster ? cloneRaster(raster) : null))
+}
+void resetLayerStrokeHistoryFromCurrent
+
+function clearAllLayerStrokeHistories() {
+  layerStrokeHistoryMap.clear()
+  activeRecordedStroke = null
+}
+
+function serializeBrushRenderConfig(config: BrushRenderConfig): SerializedBrushRenderConfig {
+  return {
+    color: config.color,
+    size: config.size,
+    opacity: config.opacity,
+    style: cloneBrushStyleState(config.style),
+    pressureEnabled: config.pressureEnabled
+  }
+}
+
+function parseBrushRenderConfig(raw: unknown): BrushRenderConfig | null {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+
+  const value = raw as Partial<SerializedBrushRenderConfig>
+  if (typeof value.color !== 'string') {
+    return null
+  }
+
+  return {
+    color: value.color,
+    size: clamp(Number(value.size ?? 1), 1, 180),
+    opacity: clamp(Number(value.opacity ?? 100), 1, 100),
+    style: cloneBrushStyleState({
+      angle: clamp(Number(value.style?.angle ?? 0), 0, 180),
+      roundness: clamp(Number(value.style?.roundness ?? 100), 10, 100),
+      spacing: clamp(Number(value.style?.spacing ?? 12), 1, 80),
+      hardness: clamp(Number(value.style?.hardness ?? 100), 1, 100),
+      flow: clamp(Number(value.style?.flow ?? 100), 1, 100),
+      sizeMode: value.style?.sizeMode === 'random' || value.style?.sizeMode === 'pressure' ? value.style.sizeMode : 'fixed',
+      sizeJitter: clamp(Number(value.style?.sizeJitter ?? 0), 0, 100)
+    }),
+    pressureEnabled: value.pressureEnabled !== false
+  }
+}
+
+function serializeLayerStrokeHistory(layerId: string): SerializedLayerStrokeHistory | null {
+  const history = layerStrokeHistoryMap.get(layerId)
+  if (!history) {
+    return null
+  }
+
+  return {
+    baseImage: history.baseRaster?.toDataURL('image/png') ?? '',
+    strokes: history.strokes.map((stroke) => ({
+      id: stroke.id,
+      tool: stroke.tool,
+      config: serializeBrushRenderConfig(stroke.config),
+      points: stroke.points.map((point) => ({ x: point.x, y: point.y, pressure: point.pressure, size: point.size })),
+      maxRadius: stroke.maxRadius,
+      bounds: { ...stroke.bounds }
+    }))
+  }
+}
+
+async function restoreLayerStrokeHistory(layerId: string, serialized?: SerializedLayerStrokeHistory | null) {
+  if (!serialized) {
+    resetLayerStrokeHistoryFromCurrent(layerId)
+    return
+  }
+
+  const baseRaster = serialized.baseImage ? createLayerRaster(canvasWidth.value, canvasHeight.value) : null
+  if (baseRaster && serialized.baseImage) {
+    try {
+      const image = await loadImage(serialized.baseImage)
+      const context = getCanvas2DContext(baseRaster, true)
+      context?.drawImage(image, 0, 0, canvasWidth.value, canvasHeight.value)
+    } catch {
+    }
+  }
+
+  const strokes: BrushStrokeRecord[] = []
+  for (const rawStroke of serialized.strokes ?? []) {
+    const config = parseBrushRenderConfig(rawStroke.config)
+    if (!config || !Array.isArray(rawStroke.points) || rawStroke.points.length === 0) {
+      continue
+    }
+
+    strokes.push({
+      id: typeof rawStroke.id === 'string' && rawStroke.id ? rawStroke.id : createId(),
+      layerId,
+      tool: rawStroke.tool === 'eraser' || rawStroke.tool === 'pencil' || rawStroke.tool === 'ink' || rawStroke.tool === 'pen'
+        ? rawStroke.tool
+        : 'brush',
+      config,
+      points: rawStroke.points
+        .map((point) => ({
+          x: Number(point.x),
+          y: Number(point.y),
+          pressure: clamp(Number(point.pressure ?? 1), 0.05, 1),
+          size: Math.max(0.45, Number(point.size ?? 1))
+        }))
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
+      maxRadius: Math.max(0.45, Number(rawStroke.maxRadius ?? 1)),
+      bounds: {
+        minX: Number(rawStroke.bounds?.minX ?? 0),
+        minY: Number(rawStroke.bounds?.minY ?? 0),
+        maxX: Number(rawStroke.bounds?.maxX ?? 0),
+        maxY: Number(rawStroke.bounds?.maxY ?? 0)
+      }
+    })
+  }
+
+  layerStrokeHistoryMap.set(layerId, createLayerStrokeHistory(baseRaster, strokes.filter((stroke) => stroke.points.length > 0)))
+}
+void clearAllLayerStrokeHistories
+
+function rebuildLayerFromStrokeHistory(layerId: string) {
+  const history = layerStrokeHistoryMap.get(layerId)
+  const context = getLayerContext(layerId)
+  if (!history || !context) {
+    return false
+  }
+
+  context.clearRect(0, 0, canvasWidth.value, canvasHeight.value)
+  if (history.baseRaster) {
+    context.drawImage(history.baseRaster, 0, 0)
+  }
+
+  for (const stroke of history.strokes) {
+    replayBrushStroke(context, stroke)
+  }
+
+  return true
+}
+void rebuildLayerFromStrokeHistory
 
 function createLayer(name: string, fillColor: string | null = null): LayerModel {
   const layer: LayerModel = {
@@ -1600,6 +2380,7 @@ function createLayer(name: string, fillColor: string | null = null): LayerModel 
   }
 
   layerRasterMap.set(layer.id, createLayerRaster(canvasWidth.value, canvasHeight.value, fillColor))
+  resetLayerStrokeHistoryFromCurrent(layer.id)
   return layer
 }
 
@@ -1637,6 +2418,7 @@ function renderComposite() {
     context.globalAlpha = clamp(layer.opacity, 0, 1)
     context.globalCompositeOperation = layer.blendMode
     context.drawImage(raster, 0, 0)
+    renderLayerTextElements(context, layer.id, clamp(layer.opacity, 0, 1))
     context.restore()
   }
 
@@ -1657,7 +2439,7 @@ function refreshLayerThumbnail(layerId: string) {
   const thumbCanvas = document.createElement('canvas')
   thumbCanvas.width = thumbWidth
   thumbCanvas.height = thumbHeight
-  const thumbContext = thumbCanvas.getContext('2d')
+  const thumbContext = getCanvas2DContext(thumbCanvas)
   if (!thumbContext) {
     return
   }
@@ -1682,6 +2464,15 @@ function refreshLayerThumbnail(layerId: string) {
   const offsetY = (thumbHeight - drawHeight) / 2
 
   thumbContext.drawImage(raster, offsetX, offsetY, drawWidth, drawHeight)
+
+  if (getLayerTextElements(layerId).length > 0) {
+    thumbContext.save()
+    thumbContext.translate(offsetX, offsetY)
+    thumbContext.scale(scale, scale)
+    renderLayerTextElements(thumbContext, layerId, clamp(layer.opacity, 0, 1))
+    thumbContext.restore()
+  }
+
   thumbContext.strokeStyle = '#94a3b8'
   thumbContext.strokeRect(0.5, 0.5, thumbWidth - 1, thumbHeight - 1)
   layer.thumbnail = thumbCanvas.toDataURL('image/png')
@@ -1699,7 +2490,7 @@ function makeSnapshotMarker(snapshot: HistorySnapshot) {
     snapshot.height,
     snapshot.activeLayerId ?? 'none',
     snapshot.layers
-      .map((layer) => `${layer.id}:${layer.visible ? 1 : 0}:${layer.locked ? 1 : 0}:${Math.round(layer.opacity * 100)}:${layer.blendMode}:${layer.image.length}`)
+      .map((layer) => `${layer.id}:${layer.visible ? 1 : 0}:${layer.locked ? 1 : 0}:${Math.round(layer.opacity * 100)}:${layer.blendMode}:${layer.image.length}:${layer.textElements?.length ?? 0}`)
       .join('|')
   ].join('::')
 }
@@ -1717,7 +2508,8 @@ function captureSnapshot(): HistorySnapshot {
       locked: layer.locked,
       opacity: layer.opacity,
       blendMode: layer.blendMode,
-      image: getLayerRaster(layer.id)?.toDataURL('image/png') ?? ''
+      image: getLayerRaster(layer.id)?.toDataURL('image/png') ?? '',
+      textElements: serializeLayerTextElements(layer.id)
     }))
   }
 }
@@ -1754,8 +2546,11 @@ function pushHistorySnapshot() {
 
 async function restoreSnapshot(snapshot: HistorySnapshot) {
   restoringHistory.value = true
+  cancelTextEditor()
   clearFloatingSelection()
   clearPreviewCanvas()
+  clearAllLayerStrokeHistories()
+  layerTextMap.clear()
 
   canvasWidth.value = snapshot.width
   canvasHeight.value = snapshot.height
@@ -1780,13 +2575,15 @@ async function restoreSnapshot(snapshot: HistorySnapshot) {
     if (layer.image) {
       try {
         const image = await loadImage(layer.image)
-        const context = raster.getContext('2d')
+        const context = getCanvas2DContext(raster, true)
         if (context) {
           context.drawImage(image, 0, 0, snapshot.width, snapshot.height)
         }
       } catch {
       }
     }
+
+    restoreLayerTextElements(layer.id, layer.textElements)
   }
 
   activeLayerId.value = snapshot.activeLayerId && layers.value.some((layer) => layer.id === snapshot.activeLayerId)
@@ -1863,7 +2660,7 @@ function isShapeTool(tool: ToolId) {
 }
 
 function isBrushTool(tool: ToolId) {
-  return tool === 'brush' || tool === 'pencil' || tool === 'ink' || tool === 'eraser'
+  return isPaintTool(tool) || tool === 'eraser'
 }
 
 function drawRegularPolygon(context: CanvasRenderingContext2D, centerX: number, centerY: number, radius: number, sides: number, rotation = -Math.PI / 2) {
@@ -1974,83 +2771,223 @@ function drawHeartPath(context: CanvasRenderingContext2D, x: number, y: number, 
   context.closePath()
 }
 
-function getBrushRadius(pressure: number, tool: ToolId) {
-  let size = brushSize.value
+function getBrushWidthRange(tool: ToolId, config?: BrushRenderConfig) {
+  const renderConfig = config ?? createBrushRenderConfig()
+  const size = Math.max(1, renderConfig.size)
 
   if (tool === 'pencil') {
-    size *= 0.74
+    return { min: size, max: size }
   }
+
+  if (tool === 'pen') {
+    const min = Math.max(2, size * 0.5)
+    return { min, max: Math.max(min + 0.4, size) }
+  }
+
   if (tool === 'ink') {
-    size *= 1.15
+    const min = Math.max(2.8, size * 0.38)
+    return { min, max: Math.max(min + 1.2, size * 1.08) }
   }
 
-  if (brushStyle.sizeMode === 'pressure' && pressureEnabled.value) {
-    size *= 0.35 + pressure * 0.9
-  } else if (brushStyle.sizeMode === 'random') {
-    const jitter = brushStyle.sizeJitter / 100
-    size *= 1 - jitter + Math.random() * jitter * 2
-  }
-
-  return Math.max(0.45, size / 2)
+  const min = Math.max(3, size * 0.24)
+  return { min, max: Math.max(min + 2.2, size * 1.1) }
 }
 
-function getSpacing(tool: ToolId) {
+function resolveStrokeWidth(
+  tool: ToolId,
+  point: Point,
+  pressure: number,
+  timestamp: number,
+  previousPoint: Point | null,
+  previousWidth: number,
+  previousTimestamp: number,
+  config?: BrushRenderConfig
+) {
+  const renderConfig = config ?? createBrushRenderConfig()
+  const range = getBrushWidthRange(tool, renderConfig)
+
   if (tool === 'pencil') {
-    return Math.max(0.8, brushSize.value * 0.05)
+    return range.max
   }
 
-  return Math.max(0.8, (brushSize.value * brushStyle.spacing) / 100)
+  const distance = previousPoint ? Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y) : 0
+  const deltaTime = previousTimestamp > 0 ? Math.max(1, timestamp - previousTimestamp) : 16
+  const speed = distance / deltaTime
+
+  let speedCeiling = 1.25
+  let speedExponent = 0.7
+  let smoothing = 0.36
+  let entryBoost = 1
+
+  if (tool === 'ink') {
+    speedCeiling = 1
+    speedExponent = 0.58
+    smoothing = 0.34
+    entryBoost = 1.14
+  } else if (tool === 'brush') {
+    speedCeiling = 1.65
+    speedExponent = 0.86
+    smoothing = 0.24
+    entryBoost = 1.03
+  } else if (tool === 'pen') {
+    speedCeiling = 1.8
+    speedExponent = 0.9
+    smoothing = 0.42
+    entryBoost = 1.08
+  }
+
+  const normalizedSpeed = clamp(speed / speedCeiling, 0, 1)
+  let width = range.max - (range.max - range.min) * Math.pow(normalizedSpeed, speedExponent)
+
+  if (renderConfig.pressureEnabled && renderConfig.style.sizeMode === 'pressure') {
+    const pressureGain = tool === 'pen' ? 0.18 : 0.26
+    width *= 1 - pressureGain + pressure * pressureGain
+  }
+
+  if (previousWidth > 0) {
+    width = lerp(previousWidth, width, smoothing)
+  } else {
+    width *= entryBoost
+  }
+
+  return clamp(width, range.min, range.max)
 }
 
-function drawBrushStamp(context: CanvasRenderingContext2D, point: Point, pressure: number, tool: ToolId) {
-  const radius = getBrushRadius(pressure, tool)
-  const roundness = clamp(brushStyle.roundness / 100, 0.1, 1)
-  const angle = (brushStyle.angle * Math.PI) / 180
-
-  let alpha = (brushOpacity.value / 100) * (brushStyle.flow / 100)
+function getSpacing(tool: ToolId, config?: BrushRenderConfig) {
+  const renderConfig = config ?? createBrushRenderConfig()
   if (tool === 'pencil') {
-    alpha = brushOpacity.value / 100
+    return 0.75
   }
+
+  if (tool === 'pen') {
+    return Math.max(0.7, renderConfig.size * 0.12)
+  }
+
+  return Math.max(0.8, (renderConfig.size * renderConfig.style.spacing) / 120)
+}
+
+function drawBrushStamp(context: CanvasRenderingContext2D, point: Point, width: number, tool: ToolId, config?: BrushRenderConfig) {
+  const renderConfig = config ?? createBrushRenderConfig()
+  const radius = Math.max(0.45, width / 2)
+  const widthRange = getBrushWidthRange(tool, renderConfig)
+  const roundness = clamp(renderConfig.style.roundness / 100, 0.1, 1)
+  const angle = (renderConfig.style.angle * Math.PI) / 180
 
   context.save()
 
   if (tool === 'eraser') {
     context.globalCompositeOperation = 'destination-out'
     context.fillStyle = '#000000'
-    context.globalAlpha = clamp(alpha, 0.02, 1)
+    context.globalAlpha = clamp((renderConfig.opacity / 100) * (renderConfig.style.flow / 100), 0.02, 1)
   } else {
     context.globalCompositeOperation = 'source-over'
-    context.fillStyle = brushColor.value
-    context.globalAlpha = clamp(alpha, 0.02, 1)
+    context.fillStyle = renderConfig.color
   }
 
-  const hardness = clamp(brushStyle.hardness / 100, 0.03, 1)
+  const hardness = clamp(renderConfig.style.hardness / 100, 0.03, 1)
 
   context.translate(point.x, point.y)
   context.rotate(angle)
   context.scale(1, roundness)
-  context.beginPath()
-  context.arc(0, 0, radius, 0, Math.PI * 2)
-  context.fill()
 
-  if (tool !== 'pencil' && hardness < 0.97) {
-    context.globalAlpha = clamp(alpha * (1 - hardness) * 0.32, 0.01, 0.22)
+  if (tool === 'pencil') {
+    context.fillStyle = '#555555'
+    context.globalAlpha = clamp(renderConfig.opacity / 100, 0.7, 0.8)
     context.beginPath()
-    context.arc(0, 0, radius * 1.38, 0, Math.PI * 2)
+    context.arc(0, 0, radius, 0, Math.PI * 2)
     context.fill()
+
+    for (let index = 0; index < 6; index += 1) {
+      const seed = Math.sin(point.x * 12.9898 + point.y * 78.233 + index * 37.719)
+      const angleOffset = seed * Math.PI * 2
+      const distance = radius * (0.2 + Math.abs(seed) * 0.7)
+      context.globalAlpha = 0.05 + (index % 3) * 0.015
+      context.beginPath()
+      context.arc(
+        Math.cos(angleOffset) * distance,
+        Math.sin(angleOffset) * distance,
+        Math.max(0.18, radius * 0.32),
+        0,
+        Math.PI * 2
+      )
+      context.fill()
+    }
+  } else if (tool === 'brush') {
+    context.fillStyle = '#000000'
+    context.globalAlpha = clamp((renderConfig.opacity / 100) * 0.7, 0.18, 0.56)
+    context.shadowColor = 'rgba(0, 0, 0, 0.2)'
+    context.shadowBlur = Math.max(5, radius * 2.4)
+    context.beginPath()
+    context.arc(0, 0, radius, 0, Math.PI * 2)
+    context.fill()
+    context.shadowBlur = 0
+    context.globalAlpha = clamp((renderConfig.opacity / 100) * 0.22, 0.08, 0.24)
+    context.beginPath()
+    context.arc(0, 0, radius * 1.45, 0, Math.PI * 2)
+    context.fill()
+    context.globalAlpha = clamp((renderConfig.opacity / 100) * 0.1, 0.04, 0.12)
+    context.beginPath()
+    context.arc(0, 0, radius * 1.9, 0, Math.PI * 2)
+    context.fill()
+  } else {
+    context.fillStyle = '#000000'
+    context.globalAlpha = tool === 'ink' ? 1 : clamp(renderConfig.opacity / 100, 0.02, 1)
+    context.beginPath()
+    context.arc(0, 0, radius, 0, Math.PI * 2)
+    context.fill()
+
+    if (tool === 'ink' && hardness < 0.97) {
+      context.globalAlpha = clamp((1 - hardness) * 0.11, 0.015, 0.08)
+      context.beginPath()
+      context.arc(0, 0, radius * 1.16, 0, Math.PI * 2)
+      context.fill()
+    }
+
+    if (tool === 'ink') {
+      context.globalAlpha = 0.08
+      context.beginPath()
+      context.arc(-radius * 0.16, -radius * 0.12, radius * 0.72, 0, Math.PI * 2)
+      context.fill()
+
+      const dryRatio = clamp((widthRange.max - width) / Math.max(0.001, widthRange.max - widthRange.min), 0, 1)
+      if (dryRatio > 0.32) {
+        context.globalCompositeOperation = 'destination-out'
+        context.globalAlpha = 0.035 + dryRatio * 0.05
+        const notchCount = 2 + Math.round(dryRatio * 3)
+        for (let index = 0; index < notchCount; index += 1) {
+          const seed = Math.sin(point.x * 8.123 + point.y * 5.371 + index * 19.17)
+          const sweep = Math.cos(seed * Math.PI * 2)
+          context.beginPath()
+          context.arc(
+            sweep * radius * (0.28 + dryRatio * 0.35),
+            seed * radius * 0.32,
+            radius * (0.09 + dryRatio * 0.12),
+            0,
+            Math.PI * 2
+          )
+          context.fill()
+        }
+      }
+    }
   }
 
   context.restore()
 }
 
-function drawBrushSegment(context: CanvasRenderingContext2D, from: Point, to: Point, fromPressure: number, toPressure: number, tool: ToolId) {
+function drawBrushSegment(
+  context: CanvasRenderingContext2D,
+  from: StrokePointSample,
+  to: StrokePointSample,
+  tool: ToolId,
+  config?: BrushRenderConfig
+) {
   const distance = Math.hypot(to.x - from.x, to.y - from.y)
   if (distance < 0.001) {
-    drawBrushStamp(context, to, toPressure, tool)
+    drawBrushStamp(context, to, to.size, tool, config)
     return
   }
 
-  const step = getSpacing(tool)
+  const step = getSpacing(tool, config)
   const count = Math.max(1, Math.ceil(distance / step))
   for (let index = 0; index <= count; index += 1) {
     const t = count === 0 ? 1 : index / count
@@ -2058,9 +2995,723 @@ function drawBrushSegment(context: CanvasRenderingContext2D, from: Point, to: Po
       x: from.x + (to.x - from.x) * t,
       y: from.y + (to.y - from.y) * t
     }
-    const pressure = fromPressure + (toPressure - fromPressure) * t
-    drawBrushStamp(context, point, pressure, tool)
+    const width = from.size + (to.size - from.size) * t
+    drawBrushStamp(context, point, width, tool, config)
   }
+}
+
+function replayBrushStroke(context: CanvasRenderingContext2D, stroke: BrushStrokeRecord) {
+  if (stroke.points.length === 0) {
+    return
+  }
+
+  if (stroke.points.length === 1) {
+    const point = stroke.points[0]!
+    drawBrushStamp(context, point, point.size, stroke.tool, stroke.config)
+    return
+  }
+
+  for (let index = 1; index < stroke.points.length; index += 1) {
+    const from = stroke.points[index - 1]!
+    const to = stroke.points[index]!
+    drawBrushSegment(context, from, to, stroke.tool, stroke.config)
+  }
+}
+
+function beginRecordedStroke(layerId: string, tool: RecordablePaintTool, point: Point, pressure: number, size: number) {
+  const history = getLayerStrokeHistory(layerId)
+  if (!history.baseRaster && history.strokes.length === 0) {
+    const raster = getLayerRaster(layerId)
+    history.baseRaster = raster ? cloneRaster(raster) : null
+  }
+
+  const config = createBrushRenderConfig()
+  const radius = Math.max(0.45, size / 2)
+  activeRecordedStroke = {
+    id: createId(),
+    layerId,
+    tool,
+    config,
+    points: [{ x: point.x, y: point.y, pressure, size }],
+    maxRadius: radius,
+    bounds: {
+      minX: point.x - radius,
+      minY: point.y - radius,
+      maxX: point.x + radius,
+      maxY: point.y + radius
+    }
+  }
+}
+
+function appendRecordedStrokePoint(point: Point, pressure: number, size: number) {
+  if (!activeRecordedStroke) {
+    return
+  }
+
+  const points = activeRecordedStroke.points
+  const lastPoint = points[points.length - 1]
+  if (
+    lastPoint &&
+    Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y) < 0.35 &&
+    Math.abs(pressure - lastPoint.pressure) < 0.01 &&
+    Math.abs(size - lastPoint.size) < 0.01
+  ) {
+    return
+  }
+
+  const radius = Math.max(0.45, size / 2)
+  activeRecordedStroke.maxRadius = Math.max(activeRecordedStroke.maxRadius, radius)
+  activeRecordedStroke.bounds.minX = Math.min(activeRecordedStroke.bounds.minX, point.x - radius)
+  activeRecordedStroke.bounds.minY = Math.min(activeRecordedStroke.bounds.minY, point.y - radius)
+  activeRecordedStroke.bounds.maxX = Math.max(activeRecordedStroke.bounds.maxX, point.x + radius)
+  activeRecordedStroke.bounds.maxY = Math.max(activeRecordedStroke.bounds.maxY, point.y + radius)
+  points.push({ x: point.x, y: point.y, pressure, size })
+}
+
+function applyPenTerminalAccent() {
+  if (activeTool.value !== 'pen' || !activeRecordedStroke || !drawState.lastPoint) {
+    return
+  }
+
+  const layer = activeLayer.value
+  if (!layer || layer.locked) {
+    return
+  }
+
+  const context = getLayerContext(layer.id)
+  if (!context) {
+    return
+  }
+
+  const accentSize = clamp(drawState.lastStrokeSize * 1.14, 2.2, 4.4)
+  appendRecordedStrokePoint(drawState.lastPoint, drawState.lastPressure, accentSize)
+  drawBrushStamp(context, drawState.lastPoint, accentSize, 'pen')
+}
+
+function commitRecordedStroke() {
+  if (!activeRecordedStroke || activeRecordedStroke.points.length === 0) {
+    activeRecordedStroke = null
+    return
+  }
+
+  const history = getLayerStrokeHistory(activeRecordedStroke.layerId)
+  appendStrokeToHistory(history, activeRecordedStroke)
+  activeRecordedStroke = null
+}
+
+function discardRecordedStroke() {
+  activeRecordedStroke = null
+}
+
+function getStrokeEraserRadius() {
+  if (activeTool.value !== 'eraser' || eraserMode.value !== 'stroke') {
+    return 0
+  }
+
+  return Math.max(2, brushSize.value / 2)
+}
+
+function getStrokeHitPadding(stroke: BrushStrokeRecord) {
+  return getStrokeSearchPadding(stroke) + getStrokeEraserRadius()
+}
+
+function getPointDistanceSquared(fromX: number, fromY: number, toX: number, toY: number) {
+  const dx = fromX - toX
+  const dy = fromY - toY
+  return dx * dx + dy * dy
+}
+
+function measurePointToSegmentDistanceSquared(point: Point, from: StrokePointSample, to: StrokePointSample) {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const lengthSquared = dx * dx + dy * dy
+
+  if (lengthSquared <= 0.0001) {
+    return {
+      distanceSquared: getPointDistanceSquared(point.x, point.y, from.x, from.y),
+      t: 0
+    }
+  }
+
+  const t = clamp(((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared, 0, 1)
+  const closestX = from.x + dx * t
+  const closestY = from.y + dy * t
+  return {
+    distanceSquared: getPointDistanceSquared(point.x, point.y, closestX, closestY),
+    t
+  }
+}
+
+function measureStrokeHitScore(stroke: BrushStrokeRecord, point: Point) {
+  const padding = getStrokeHitPadding(stroke)
+
+  if (
+    point.x < stroke.bounds.minX - padding ||
+    point.x > stroke.bounds.maxX + padding ||
+    point.y < stroke.bounds.minY - padding ||
+    point.y > stroke.bounds.maxY + padding
+  ) {
+    return 0
+  }
+
+  const points = stroke.points
+  if (points.length === 0) {
+    return 0
+  }
+
+  if (points.length === 1) {
+    const target = points[0]!
+    const radius = Math.max(0.45, target.size / 2) + padding
+    const score = radius * radius - getPointDistanceSquared(point.x, point.y, target.x, target.y)
+    return score > 0 ? score : 0
+  }
+
+  let bestScore = 0
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1]!
+    const to = points[index]!
+    const segmentRadius = Math.max(from.size, to.size) / 2 + padding
+
+    if (
+      point.x < Math.min(from.x, to.x) - segmentRadius ||
+      point.x > Math.max(from.x, to.x) + segmentRadius ||
+      point.y < Math.min(from.y, to.y) - segmentRadius ||
+      point.y > Math.max(from.y, to.y) + segmentRadius
+    ) {
+      continue
+    }
+
+    const hit = measurePointToSegmentDistanceSquared(point, from, to)
+    const localSize = from.size + (to.size - from.size) * hit.t
+    const localRadius = Math.max(0.45, localSize / 2) + padding
+    const score = localRadius * localRadius - hit.distanceSquared
+    if (score > bestScore) {
+      bestScore = score
+    }
+  }
+
+  return bestScore
+}
+
+function collectStrokeHitCandidates(history: LayerStrokeHistory, point: Point) {
+  const eraserRadius = getStrokeEraserRadius()
+  const candidateIds = new Set<string>()
+  const candidates: StrokeHitMatch[] = []
+
+  forEachStrokeSpatialCell(
+    point.x - eraserRadius,
+    point.y - eraserRadius,
+    point.x + eraserRadius,
+    point.y + eraserRadius,
+    (key) => {
+      const ids = history.spatialIndex.get(key)
+      if (!ids) {
+        return
+      }
+
+      for (let index = ids.length - 1; index >= 0; index -= 1) {
+        const strokeId = ids[index]!
+        if (candidateIds.has(strokeId)) {
+          continue
+        }
+
+        candidateIds.add(strokeId)
+        const strokeIndex = history.strokeOrder.get(strokeId)
+        if (strokeIndex == null) {
+          continue
+        }
+
+        const stroke = history.strokes[strokeIndex]
+        if (!stroke) {
+          continue
+        }
+
+        candidates.push({
+          history,
+          stroke,
+          index: strokeIndex
+        })
+      }
+    }
+  )
+
+  candidates.sort((left, right) => right.index - left.index)
+  return candidates
+}
+
+function boundsOverlap(
+  left: { minX: number; minY: number; maxX: number; maxY: number },
+  right: { minX: number; minY: number; maxX: number; maxY: number },
+  padding = 0
+) {
+  return !(
+    left.maxX + padding < right.minX ||
+    right.maxX + padding < left.minX ||
+    left.maxY + padding < right.minY ||
+    right.maxY + padding < left.minY
+  )
+}
+
+function hasLaterEraserAffectingStroke(history: LayerStrokeHistory, index: number, stroke: BrushStrokeRecord) {
+  const padding = Math.max(getStrokeSearchPadding(stroke), stroke.maxRadius)
+  for (let nextIndex = index + 1; nextIndex < history.strokes.length; nextIndex += 1) {
+    const nextStroke = history.strokes[nextIndex]
+    if (!nextStroke || nextStroke.tool !== 'eraser') {
+      continue
+    }
+
+    if (boundsOverlap(stroke.bounds, nextStroke.bounds, padding + nextStroke.maxRadius)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function findRecordedStrokeMatchAtPoint(point: Point): StrokeHitMatch | null {
+  const layer = activeLayer.value
+  if (!layer || layer.locked) {
+    return null
+  }
+
+  const history = layerStrokeHistoryMap.get(layer.id)
+  if (!history || history.strokes.length === 0) {
+    return null
+  }
+
+  for (const candidate of collectStrokeHitCandidates(history, point)) {
+    if (!isRecordableDrawableStroke(candidate.stroke.tool)) {
+      continue
+    }
+
+    const score = measureStrokeHitScore(candidate.stroke, point)
+    if (score > 0) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+function createStrokeSelectionRaster(stroke: BrushStrokeRecord) {
+  const rect = buildRectFromPoints(stroke.bounds.minX, stroke.bounds.minY, stroke.bounds.maxX, stroke.bounds.maxY)
+  if (rect.width <= 1 || rect.height <= 1) {
+    return null
+  }
+
+  const floating = document.createElement('canvas')
+  floating.width = rect.width
+  floating.height = rect.height
+  const floatingContext = getCanvas2DContext(floating)
+  if (!floatingContext) {
+    return null
+  }
+
+  floatingContext.save()
+  floatingContext.translate(-rect.x, -rect.y)
+  replayBrushStroke(floatingContext, stroke)
+  floatingContext.restore()
+
+  return { floating, rect }
+}
+
+function captureRecordedStrokeSelection(match: StrokeHitMatch) {
+  const layer = activeLayer.value
+  if (!layer || hasLaterEraserAffectingStroke(match.history, match.index, match.stroke)) {
+    return false
+  }
+
+  const selection = createStrokeSelectionRaster(match.stroke)
+  if (!selection) {
+    return false
+  }
+
+  removeStrokeFromHistory(match.history, match.index)
+  const rebuilt = rebuildLayerFromStrokeHistory(layer.id)
+  if (!rebuilt) {
+    appendStrokeToHistory(match.history, match.stroke)
+    rebuildLayerFromStrokeHistory(layer.id)
+    return false
+  }
+
+  setFloatingSelection(selection.floating, selection.rect, 'rect', [])
+  renderComposite()
+  refreshLayerThumbnail(layer.id)
+  return true
+}
+
+function collectRasterStrokeRegionAtPoint(point: Point) {
+  const layer = activeLayer.value
+  if (!layer || layer.locked) {
+    return null
+  }
+
+  const context = getLayerContext(layer.id)
+  const raster = getLayerRaster(layer.id)
+  if (!context || !raster) {
+    return null
+  }
+
+  const width = raster.width
+  const height = raster.height
+  const startX = clamp(Math.floor(point.x), 0, width - 1)
+  const startY = clamp(Math.floor(point.y), 0, height - 1)
+  const imageData = context.getImageData(0, 0, width, height)
+  const data = imageData.data
+  const startIndex = startY * width + startX
+  const startOffset = startIndex * 4
+  const seedAlpha = data[startOffset + 3]
+  if (seedAlpha <= 10) {
+    return null
+  }
+
+  const seed: [number, number, number] = [
+    normalizePremultipliedChannel(data[startOffset], seedAlpha),
+    normalizePremultipliedChannel(data[startOffset + 1], seedAlpha),
+    normalizePremultipliedChannel(data[startOffset + 2], seedAlpha)
+  ]
+  const toleranceSquared = 95 * 95
+  const bridgeToleranceSquared = 120 * 120
+  const bridgePadding = 12
+  const visited = new Uint8Array(width * height)
+  const mask = new Uint8Array(width * height)
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+
+  const floodRegion = (seedIndex: number, nextToleranceSquared: number) => {
+    const stack: number[] = [seedIndex]
+    visited[seedIndex] = 1
+
+    while (stack.length > 0) {
+      const pixelIndex = stack.pop()
+      if (pixelIndex == null) {
+        continue
+      }
+
+      const offset = pixelIndex * 4
+      const alpha = data[offset + 3]
+      if (alpha <= 2 || colorDistanceSquaredUnpremultiplied(data, offset, seed) > nextToleranceSquared) {
+        continue
+      }
+
+      mask[pixelIndex] = 1
+      const x = pixelIndex % width
+      const y = Math.floor(pixelIndex / width)
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+
+      for (let deltaY = -2; deltaY <= 2; deltaY += 1) {
+        const nextY = y + deltaY
+        if (nextY < 0 || nextY >= height) {
+          continue
+        }
+
+        for (let deltaX = -2; deltaX <= 2; deltaX += 1) {
+          if ((deltaX === 0 && deltaY === 0) || deltaX * deltaX + deltaY * deltaY > 5) {
+            continue
+          }
+
+          const nextX = x + deltaX
+          if (nextX < 0 || nextX >= width) {
+            continue
+          }
+
+          const nextIndex = nextY * width + nextX
+          if (visited[nextIndex] === 1) {
+            continue
+          }
+
+          visited[nextIndex] = 1
+          stack.push(nextIndex)
+        }
+      }
+    }
+  }
+
+  floodRegion(startIndex, toleranceSquared)
+
+  if (maxX >= minX && maxY >= minY) {
+    for (let pass = 0; pass < 4; pass += 1) {
+      let expanded = false
+      const searchMinX = Math.max(0, minX - bridgePadding)
+      const searchMinY = Math.max(0, minY - bridgePadding)
+      const searchMaxX = Math.min(width - 1, maxX + bridgePadding)
+      const searchMaxY = Math.min(height - 1, maxY + bridgePadding)
+
+      for (let y = searchMinY; y <= searchMaxY; y += 1) {
+        for (let x = searchMinX; x <= searchMaxX; x += 1) {
+          if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+            continue
+          }
+
+          const pixelIndex = y * width + x
+          if (visited[pixelIndex] === 1) {
+            continue
+          }
+
+          const offset = pixelIndex * 4
+          const alpha = data[offset + 3]
+          if (alpha <= 2 || colorDistanceSquaredUnpremultiplied(data, offset, seed) > bridgeToleranceSquared) {
+            continue
+          }
+
+          floodRegion(pixelIndex, bridgeToleranceSquared)
+          expanded = true
+        }
+      }
+
+      if (!expanded) {
+        break
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return null
+  }
+
+  return {
+    width,
+    height,
+    mask,
+    bounds: { minX, minY, maxX, maxY }
+  }
+}
+
+function captureRasterRegionSelection(region: NonNullable<ReturnType<typeof collectRasterStrokeRegionAtPoint>>) {
+  const layer = activeLayer.value
+  if (!layer || layer.locked) {
+    return false
+  }
+
+  const context = getLayerContext(layer.id)
+  if (!context) {
+    return false
+  }
+
+  const rect = buildRectFromPoints(region.bounds.minX, region.bounds.minY, region.bounds.maxX, region.bounds.maxY)
+  if (rect.width <= 1 || rect.height <= 1) {
+    return false
+  }
+
+  const floating = document.createElement('canvas')
+  floating.width = rect.width
+  floating.height = rect.height
+  const floatingContext = getCanvas2DContext(floating)
+  if (!floatingContext) {
+    return false
+  }
+
+  const imageData = context.getImageData(rect.x, rect.y, rect.width, rect.height)
+  const sourcePixels = imageData.data
+  const floatingImage = floatingContext.createImageData(rect.width, rect.height)
+  const floatingPixels = floatingImage.data
+  let hasOpaquePixel = false
+
+  for (let localY = 0; localY < rect.height; localY += 1) {
+    for (let localX = 0; localX < rect.width; localX += 1) {
+      const globalX = rect.x + localX
+      const globalY = rect.y + localY
+      const sourceIndex = localY * rect.width + localX
+      const globalIndex = globalY * region.width + globalX
+      if (region.mask[globalIndex] !== 1) {
+        continue
+      }
+
+      const offset = sourceIndex * 4
+      floatingPixels[offset] = sourcePixels[offset]
+      floatingPixels[offset + 1] = sourcePixels[offset + 1]
+      floatingPixels[offset + 2] = sourcePixels[offset + 2]
+      floatingPixels[offset + 3] = sourcePixels[offset + 3]
+      sourcePixels[offset] = 0
+      sourcePixels[offset + 1] = 0
+      sourcePixels[offset + 2] = 0
+      sourcePixels[offset + 3] = 0
+      hasOpaquePixel = hasOpaquePixel || floatingPixels[offset + 3] > 8
+    }
+  }
+
+  if (!hasOpaquePixel) {
+    return false
+  }
+
+  floatingContext.putImageData(floatingImage, 0, 0)
+  context.putImageData(imageData, rect.x, rect.y)
+  resetLayerStrokeHistoryFromCurrent(layer.id)
+  setFloatingSelection(floating, rect, 'rect', [])
+  renderComposite()
+  refreshLayerThumbnail(layer.id)
+  return true
+}
+
+function trySelectObjectAtPoint(point: Point) {
+  const strokeMatch = findRecordedStrokeMatchAtPoint(point)
+  if (strokeMatch && captureRecordedStrokeSelection(strokeMatch)) {
+    return true
+  }
+
+  const region = collectRasterStrokeRegionAtPoint(point)
+  if (region && captureRasterRegionSelection(region)) {
+    return true
+  }
+
+  return false
+}
+
+function drawHoverBounds(
+  preview: CanvasRenderingContext2D,
+  bounds: { minX: number; minY: number; maxX: number; maxY: number },
+  padding = 1.5
+) {
+  const x = Math.floor(bounds.minX - padding) + 0.5
+  const y = Math.floor(bounds.minY - padding) + 0.5
+  const width = Math.max(1, Math.ceil(bounds.maxX - bounds.minX + padding * 2))
+  const height = Math.max(1, Math.ceil(bounds.maxY - bounds.minY + padding * 2))
+
+  preview.save()
+  preview.globalCompositeOperation = 'source-over'
+  preview.shadowColor = 'rgba(56, 189, 248, 0.28)'
+  preview.shadowBlur = 8
+  preview.strokeStyle = 'rgba(56, 189, 248, 0.65)'
+  preview.lineWidth = 1
+  preview.strokeRect(x, y, width, height)
+  preview.shadowBlur = 0
+  preview.strokeStyle = 'rgba(255,255,255,0.75)'
+  preview.lineWidth = 1
+  preview.setLineDash([4, 3])
+  preview.strokeRect(x, y, width, height)
+  preview.restore()
+}
+
+function drawStrokeHoverPreview(stroke: BrushStrokeRecord) {
+  const preview = getPreviewContext()
+  if (!preview) {
+    return
+  }
+
+  clearPreviewCanvas()
+  preview.save()
+  preview.globalCompositeOperation = 'source-over'
+  preview.globalAlpha = 0.82
+  replayBrushStroke(preview, {
+    ...stroke,
+    config: {
+      ...stroke.config,
+      color: '#38bdf8',
+      opacity: 74,
+      style: {
+        ...stroke.config.style,
+        flow: 82,
+        hardness: Math.max(stroke.config.style.hardness, 88),
+        sizeMode: 'fixed',
+        sizeJitter: 0
+      },
+      pressureEnabled: false
+    }
+  })
+  preview.restore()
+  drawHoverBounds(preview, stroke.bounds)
+}
+
+function drawRasterStrokeHoverPreview(region: NonNullable<ReturnType<typeof collectRasterStrokeRegionAtPoint>>) {
+  const preview = getPreviewContext()
+  if (!preview) {
+    return
+  }
+
+  clearPreviewCanvas()
+
+  const { width, mask, bounds } = region
+  const previewImage = preview.createImageData(width, region.height)
+  for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+    if (mask[pixelIndex] !== 1) {
+      continue
+    }
+
+    const offset = pixelIndex * 4
+    previewImage.data[offset] = 56
+    previewImage.data[offset + 1] = 189
+    previewImage.data[offset + 2] = 248
+    previewImage.data[offset + 3] = 132
+  }
+
+  preview.putImageData(previewImage, 0, 0)
+  drawHoverBounds(preview, bounds, 1)
+}
+
+function updateStrokeHoverPreview(point: Point | null) {
+  if (!point || drawState.drawing || drawState.selectingBox || drawState.lassoSelecting || drawState.movingSelection || drawState.panning) {
+    if (hoverStrokePreviewId.value) {
+      hoverStrokePreviewId.value = null
+      clearPreviewCanvas()
+    }
+    return
+  }
+
+  if (activeTool.value !== 'eraser' || eraserMode.value !== 'stroke') {
+    if (hoverStrokePreviewId.value) {
+      hoverStrokePreviewId.value = null
+      clearPreviewCanvas()
+    }
+    return
+  }
+
+  const match = findRecordedStrokeMatchAtPoint(point)
+  if (!match) {
+    if (hoverStrokePreviewId.value) {
+      hoverStrokePreviewId.value = null
+      clearPreviewCanvas()
+    }
+    return
+  }
+
+  if (hasLaterEraserAffectingStroke(match.history, match.index, match.stroke)) {
+    const region = collectRasterStrokeRegionAtPoint(point)
+    if (!region) {
+      if (hoverStrokePreviewId.value) {
+        hoverStrokePreviewId.value = null
+        clearPreviewCanvas()
+      }
+      return
+    }
+
+    const regionKey = `${match.stroke.id}:${region.bounds.minX}:${region.bounds.minY}:${region.bounds.maxX}:${region.bounds.maxY}`
+    if (hoverStrokePreviewId.value === regionKey) {
+      return
+    }
+
+    hoverStrokePreviewId.value = regionKey
+    drawRasterStrokeHoverPreview(region)
+    return
+  }
+
+  if (hoverStrokePreviewId.value === match.stroke.id) {
+    return
+  }
+
+  hoverStrokePreviewId.value = match.stroke.id
+  drawStrokeHoverPreview(match.stroke)
+}
+
+function eraseRecordedStrokeAtPoint(point: Point) {
+  const layer = activeLayer.value
+  const match = findRecordedStrokeMatchAtPoint(point)
+  if (!layer || !match) {
+    return false
+  }
+
+  if (hasLaterEraserAffectingStroke(match.history, match.index, match.stroke)) {
+    return false
+  }
+
+  removeStrokeFromHistory(match.history, match.index)
+  hoverStrokePreviewId.value = null
+  clearPreviewCanvas()
+  return rebuildLayerFromStrokeHistory(layer.id)
 }
 
 function drawShape(context: CanvasRenderingContext2D, start: Point, end: Point, shape: ShapeType) {
@@ -2266,6 +3917,7 @@ function commitShape(start: Point, end: Point) {
   }
 
   drawShape(context, start, end, shapeType.value)
+  resetLayerStrokeHistoryFromCurrent(layer.id)
 }
 
 function rgbToHex(r: number, g: number, b: number) {
@@ -2389,46 +4041,240 @@ function floodFill(point: Point) {
   }
 
   context.putImageData(imageData, 0, 0)
+  resetLayerStrokeHistoryFromCurrent(layer.id)
   return true
 }
 
-function drawTextAtPoint(point: Point) {
-  const layer = activeLayer.value
-  if (!layer || layer.locked) {
-    return false
+async function ensureTextFontReady(family: string, weight: string, size: number) {
+  if (typeof document === 'undefined' || typeof document.fonts?.load !== 'function') {
+    return
   }
 
-  const context = getLayerContext(layer.id)
-  if (!context) {
-    return false
+  try {
+    await document.fonts.load(`${weight} ${size}px "${family}"`)
+  } catch {
+    // ignore font loading failures and keep fallback fonts available
   }
+}
 
-  const content = textDraft.value.trim()
+function normalizeTextRect(rect: Rect) {
+  const width = clamp(Math.round(rect.width), 120, canvasWidth.value)
+  const height = clamp(Math.round(rect.height), 56, canvasHeight.value)
+  const x = clamp(Math.round(rect.x), 0, Math.max(0, canvasWidth.value - width))
+  const y = clamp(Math.round(rect.y), 0, Math.max(0, canvasHeight.value - height))
+
+  return { x, y, width, height }
+}
+
+function focusTextEditor() {
+  nextTick(() => {
+    const input = textEditorInputRef.value
+    if (!input) {
+      return
+    }
+
+    input.focus()
+    input.select()
+  })
+}
+
+function getTextCanvasFont(style: TextStyleSnapshot) {
+  const weight = style.bold ? '700' : '400'
+  const italic = style.italic ? 'italic' : 'normal'
+  const size = clamp(Math.round(style.size), 8, 360)
+  const family = style.fontFamily || 'MiSans'
+
+  return {
+    weight,
+    italic,
+    size,
+    family,
+    font: `${italic} ${weight} ${size}px "${family}", "Noto Sans SC", "Microsoft YaHei", sans-serif`
+  }
+}
+
+function renderTextElement(context: CanvasRenderingContext2D, element: TextElementModel, alpha = 1) {
+  const content = element.text.trim()
   if (!content) {
-    return false
+    return
   }
 
-  const weight = textStyle.bold ? '700' : '400'
-  const italic = textStyle.italic ? 'italic' : 'normal'
-  const size = clamp(Math.round(textStyle.size), 8, 360)
-  const family = textStyle.fontFamily || 'Noto Sans SC'
-  const lines = content.split(/\r?\n/u)
+  const rect = normalizeTextRect(element)
+  const style = cloneTextStyleSnapshot(element.style)
+  const { weight, size, family, font } = getTextCanvasFont(style)
   const lineHeight = Math.max(12, Math.round(size * 1.35))
+  const paddingX = Math.max(6, Math.round(size * 0.25))
+  const paddingY = Math.max(4, Math.round(size * 0.2))
+  const textWidth = Math.max(20, rect.width - paddingX * 2)
+
+  void ensureTextFontReady(family, weight, size)
 
   context.save()
   context.globalCompositeOperation = 'source-over'
-  context.globalAlpha = brushOpacity.value / 100
-  context.fillStyle = textStyle.color
+  context.globalAlpha = clamp(alpha, 0, 1)
+  context.fillStyle = style.color
   context.textBaseline = 'top'
-  context.font = `${italic} ${weight} ${size}px "${family}", "Noto Sans SC", "Microsoft YaHei", sans-serif`
+  context.font = font
+  context.beginPath()
+  context.rect(rect.x, rect.y, rect.width, rect.height)
+  context.clip()
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]
-    context.fillText(line || ' ', point.x, point.y + index * lineHeight)
+  const lines = getWrappedTextLines(context, content, textWidth)
+  let cursorY = rect.y + paddingY
+  for (const line of lines) {
+    if (cursorY + lineHeight > rect.y + rect.height) {
+      break
+    }
+    context.fillText(line || ' ', rect.x + paddingX, cursorY)
+    cursorY += lineHeight
+  }
+  context.restore()
+}
+
+function renderLayerTextElements(context: CanvasRenderingContext2D, layerId: string, alpha = 1) {
+  for (const element of getLayerTextElements(layerId)) {
+    renderTextElement(context, element, alpha)
+  }
+}
+
+function openTextEditor(rect: Rect, content = textDraft.value, options?: { layerId?: string | null; textId?: string | null; style?: TextStyleSnapshot; mode?: TextEditorMode }) {
+  const nextRect = normalizeTextRect(rect)
+  const style = options?.style ? cloneTextStyleSnapshot(options.style) : captureCurrentTextStyle()
+  applyTextStyleSnapshot(style)
+  textEditor.active = true
+  textEditor.layerId = options?.layerId ?? activeLayerId.value
+  textEditor.textId = options?.textId ?? null
+  textEditor.mode = options?.mode ?? (options?.textId ? 'edit' : 'create')
+  textEditor.interaction = 'idle'
+  textEditor.x = nextRect.x
+  textEditor.y = nextRect.y
+  textEditor.width = nextRect.width
+  textEditor.height = nextRect.height
+  textEditor.text = content
+  textEditor.pointerId = null
+  textDraft.value = content
+  clearPreviewCanvas()
+  focusTextEditor()
+}
+
+function cancelTextEditor() {
+  textEditor.active = false
+  textEditor.layerId = null
+  textEditor.textId = null
+  textEditor.mode = 'create'
+  textEditor.interaction = 'idle'
+  textEditor.text = ''
+  textEditor.pointerId = null
+}
+
+function wrapTextLine(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (!text) {
+    return ['']
   }
 
-  context.restore()
+  const lines: string[] = []
+  let current = ''
+
+  for (const char of Array.from(text)) {
+    const next = `${current}${char}`
+    if (current && context.measureText(next).width > maxWidth) {
+      lines.push(current)
+      current = char
+      continue
+    }
+
+    current = next
+  }
+
+  lines.push(current)
+  return lines
+}
+
+function getWrappedTextLines(context: CanvasRenderingContext2D, content: string, maxWidth: number) {
+  const paragraphs = content.replace(/\r\n/g, '\n').split('\n')
+  const lines: string[] = []
+
+  for (const paragraph of paragraphs) {
+    lines.push(...wrapTextLine(context, paragraph, maxWidth))
+  }
+
+  return lines
+}
+
+function drawTextBoxPreview(rect: Rect) {
+  const preview = getPreviewContext()
+  if (!preview) {
+    return
+  }
+
+  clearPreviewCanvas()
+  preview.save()
+  preview.setLineDash([8, 6])
+  preview.lineWidth = 1
+  preview.strokeStyle = 'rgba(96, 165, 250, 0.95)'
+  preview.fillStyle = 'rgba(96, 165, 250, 0.12)'
+  preview.fillRect(rect.x + 0.5, rect.y + 0.5, rect.width, rect.height)
+  preview.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width, rect.height)
+  preview.restore()
+}
+
+function finalizeTextEditor(pushSnapshot = true) {
+  if (!textEditor.active) {
+    return false
+  }
+
+  const content = textEditor.text.trim()
+  textDraft.value = textEditor.text
+  if (!content) {
+    cancelTextEditor()
+    return false
+  }
+
+  const layerId = textEditor.layerId ?? activeLayerId.value
+  const layer = layerId ? layers.value.find((item) => item.id === layerId) ?? null : null
+  if (!layer || layer.locked) {
+    cancelTextEditor()
+    return false
+  }
+
+  const items = getLayerTextElements(layer.id)
+  const style = captureCurrentTextStyle()
+  const rect = normalizeTextRect({ x: textEditor.x, y: textEditor.y, width: textEditor.width, height: textEditor.height })
+
+  if (textEditor.mode === 'edit' && textEditor.textId) {
+    const current = items.find((item) => item.id === textEditor.textId)
+    if (current) {
+      current.x = rect.x
+      current.y = rect.y
+      current.width = rect.width
+      current.height = rect.height
+      current.text = textEditor.text
+      current.style = style
+    }
+  } else {
+    items.push({
+      id: createId(),
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      text: textEditor.text,
+      style
+    })
+  }
+
+  cancelTextEditor()
+
+  renderComposite()
+  refreshLayerThumbnail(layer.id)
+  if (pushSnapshot) {
+    pushHistorySnapshot()
+  }
   return true
+}
+
+function applyTextEditor() {
+  finalizeTextEditor(true)
 }
 
 function buildRectFromPoints(startX: number, startY: number, endX: number, endY: number) {
@@ -2577,7 +4423,7 @@ function isPointInFloatingSelection(point: Point) {
     return false
   }
 
-  const rasterContext = selectionRaster.getContext('2d')
+  const rasterContext = getCanvas2DContext(selectionRaster, true)
   if (!rasterContext) {
     return false
   }
@@ -2652,6 +4498,7 @@ function commitFloatingSelection(pushSnapshot = true) {
   context.globalAlpha = 1
   context.drawImage(selectionRaster, Math.round(rect.x), Math.round(rect.y))
   context.restore()
+  resetLayerStrokeHistoryFromCurrent(layer.id)
 
   clearFloatingSelection()
   clearPreviewCanvas()
@@ -2673,6 +4520,7 @@ function clearFloatingSelectionAndRender() {
       context.globalAlpha = 1
       context.drawImage(selectionRaster, Math.round(selectionState.x), Math.round(selectionState.y))
       context.restore()
+      resetLayerStrokeHistoryFromCurrent(layer.id)
       refreshLayerThumbnail(layer.id)
       pushHistorySnapshot()
     }
@@ -2684,6 +4532,8 @@ function clearFloatingSelectionAndRender() {
 }
 
 function finalizeFloatingSelection() {
+  finalizeTextEditor(true)
+
   if (!hasFloatingSelection.value) {
     return
   }
@@ -2723,30 +4573,18 @@ function captureFloatingSelection(rect: { x: number; y: number; width: number; h
   const floating = document.createElement('canvas')
   floating.width = rect.width
   floating.height = rect.height
-  const floatingContext = floating.getContext('2d')
+  const floatingContext = getCanvas2DContext(floating)
   if (!floatingContext) {
     return false
   }
 
   floatingContext.putImageData(imageData, 0, 0)
   context.clearRect(rect.x, rect.y, rect.width, rect.height)
+  resetLayerStrokeHistoryFromCurrent(layer.id)
   setFloatingSelection(floating, rect, 'rect', [])
 
   renderComposite()
   return true
-}
-
-function beginSelectionBox(point: Point) {
-  if (hasFloatingSelection.value) {
-    commitFloatingSelection(true)
-  }
-
-  drawState.selectingBox = true
-  selectionState.boxStartX = point.x
-  selectionState.boxStartY = point.y
-  selectionState.boxEndX = point.x
-  selectionState.boxEndY = point.y
-  drawSelectionBoxPreview(buildRectFromPoints(point.x, point.y, point.x, point.y))
 }
 
 function updateSelectionBox(point: Point) {
@@ -2804,7 +4642,7 @@ function finalizeLassoSelection(points: Point[]) {
   const floating = document.createElement('canvas')
   floating.width = rect.width
   floating.height = rect.height
-  const floatingContext = floating.getContext('2d')
+  const floatingContext = getCanvas2DContext(floating)
   if (!floatingContext) {
     return false
   }
@@ -2812,7 +4650,7 @@ function finalizeLassoSelection(points: Point[]) {
   const maskCanvas = document.createElement('canvas')
   maskCanvas.width = rect.width
   maskCanvas.height = rect.height
-  const maskContext = maskCanvas.getContext('2d')
+  const maskContext = getCanvas2DContext(maskCanvas, true)
   if (!maskContext) {
     return false
   }
@@ -2858,6 +4696,7 @@ function finalizeLassoSelection(points: Point[]) {
   context.closePath()
   context.fill()
   context.restore()
+  resetLayerStrokeHistoryFromCurrent(layer.id)
 
   const localPath = closedPoints.map((point) => ({
     x: point.x - rect.x,
@@ -2938,6 +4777,10 @@ function eraseStrokeAtPoint(point: Point) {
     return false
   }
 
+  if (eraseRecordedStrokeAtPoint(point)) {
+    return true
+  }
+
   const context = getLayerContext(layer.id)
   const raster = getLayerRaster(layer.id)
   if (!context || !raster) {
@@ -2965,11 +4808,15 @@ function eraseStrokeAtPoint(point: Point) {
     normalizePremultipliedChannel(data[startOffset + 2], seedAlpha)
   ]
   const toleranceSquared = 95 * 95
-  const fringeToleranceSquared = 140 * 140
+  const fringeToleranceSquared = 160 * 160
   const eraseMask = new Uint8Array(width * height)
   const visited = new Uint8Array(width * height)
   const stack: number[] = [startIndex]
   visited[startIndex] = 1
+  let minErasedX = width
+  let minErasedY = height
+  let maxErasedX = -1
+  let maxErasedY = -1
 
   let changed = false
   while (stack.length > 0) {
@@ -2979,7 +4826,8 @@ function eraseStrokeAtPoint(point: Point) {
     }
 
     const offset = pixelIndex * 4
-    if (data[offset + 3] <= 2 || colorDistanceSquaredUnpremultiplied(data, offset, seed) > toleranceSquared) {
+    const alpha = data[offset + 3]
+    if (alpha <= 2 || colorDistanceSquaredUnpremultiplied(data, offset, seed) > toleranceSquared) {
       continue
     }
 
@@ -2988,24 +4836,35 @@ function eraseStrokeAtPoint(point: Point) {
 
     const x = pixelIndex % width
     const y = Math.floor(pixelIndex / width)
+    minErasedX = Math.min(minErasedX, x)
+    minErasedY = Math.min(minErasedY, y)
+    maxErasedX = Math.max(maxErasedX, x)
+    maxErasedY = Math.max(maxErasedY, y)
 
-    const neighbors = [
-      y > 0 ? pixelIndex - width : -1,
-      y < height - 1 ? pixelIndex + width : -1,
-      x > 0 ? pixelIndex - 1 : -1,
-      x < width - 1 ? pixelIndex + 1 : -1,
-      y > 0 && x > 0 ? pixelIndex - width - 1 : -1,
-      y > 0 && x < width - 1 ? pixelIndex - width + 1 : -1,
-      y < height - 1 && x > 0 ? pixelIndex + width - 1 : -1,
-      y < height - 1 && x < width - 1 ? pixelIndex + width + 1 : -1
-    ]
-
-    for (const nextIndex of neighbors) {
-      if (nextIndex < 0 || visited[nextIndex] === 1) {
+    for (let deltaY = -2; deltaY <= 2; deltaY += 1) {
+      const nextY = y + deltaY
+      if (nextY < 0 || nextY >= height) {
         continue
       }
-      visited[nextIndex] = 1
-      stack.push(nextIndex)
+
+      for (let deltaX = -2; deltaX <= 2; deltaX += 1) {
+        if ((deltaX === 0 && deltaY === 0) || deltaX * deltaX + deltaY * deltaY > 5) {
+          continue
+        }
+
+        const nextX = x + deltaX
+        if (nextX < 0 || nextX >= width) {
+          continue
+        }
+
+        const nextIndex = nextY * width + nextX
+        if (visited[nextIndex] === 1) {
+          continue
+        }
+
+        visited[nextIndex] = 1
+        stack.push(nextIndex)
+      }
     }
   }
 
@@ -3031,14 +4890,14 @@ function eraseStrokeAtPoint(point: Point) {
     const x = pixelIndex % width
     const y = Math.floor(pixelIndex / width)
 
-    for (let deltaY = -2; deltaY <= 2; deltaY += 1) {
+    for (let deltaY = -3; deltaY <= 3; deltaY += 1) {
       const nextY = y + deltaY
       if (nextY < 0 || nextY >= height) {
         continue
       }
 
-      for (let deltaX = -2; deltaX <= 2; deltaX += 1) {
-        if (deltaX * deltaX + deltaY * deltaY > 4) {
+      for (let deltaX = -3; deltaX <= 3; deltaX += 1) {
+        if (deltaX * deltaX + deltaY * deltaY > 9) {
           continue
         }
 
@@ -3059,7 +4918,7 @@ function eraseStrokeAtPoint(point: Point) {
         }
 
         const closeToSeed = colorDistanceSquaredUnpremultiplied(data, offset, seed) <= fringeToleranceSquared
-        if (closeToSeed && alpha <= 252) {
+        if (closeToSeed) {
           data[offset] = 0
           data[offset + 1] = 0
           data[offset + 2] = 0
@@ -3069,20 +4928,122 @@ function eraseStrokeAtPoint(point: Point) {
     }
   }
 
+  if (maxErasedX >= minErasedX && maxErasedY >= minErasedY) {
+    const sweepPadding = 6
+    const sweepMinX = Math.max(0, minErasedX - sweepPadding)
+    const sweepMinY = Math.max(0, minErasedY - sweepPadding)
+    const sweepMaxX = Math.min(width - 1, maxErasedX + sweepPadding)
+    const sweepMaxY = Math.min(height - 1, maxErasedY + sweepPadding)
+
+    for (let y = sweepMinY; y <= sweepMaxY; y += 1) {
+      for (let x = sweepMinX; x <= sweepMaxX; x += 1) {
+        const pixelIndex = y * width + x
+        const offset = pixelIndex * 4
+        const alpha = data[offset + 3]
+        if (alpha <= 0) {
+          continue
+        }
+
+        if (colorDistanceSquaredUnpremultiplied(data, offset, seed) <= fringeToleranceSquared) {
+          data[offset] = 0
+          data[offset + 1] = 0
+          data[offset + 2] = 0
+          data[offset + 3] = 0
+        }
+      }
+    }
+
+    const sparseToleranceSquared = 190 * 190
+    const sparseBridgePadding = Math.max(12, Math.round(brushSize.value * 1.8))
+    let sweepBounds = {
+      minX: minErasedX,
+      minY: minErasedY,
+      maxX: maxErasedX,
+      maxY: maxErasedY
+    }
+
+    for (let pass = 0; pass < 12; pass += 1) {
+      const searchMinX = Math.max(0, sweepBounds.minX - sparseBridgePadding)
+      const searchMinY = Math.max(0, sweepBounds.minY - sparseBridgePadding)
+      const searchMaxX = Math.min(width - 1, sweepBounds.maxX + sparseBridgePadding)
+      const searchMaxY = Math.min(height - 1, sweepBounds.maxY + sparseBridgePadding)
+
+      let foundSparseMatch = false
+      let nextBounds = { ...sweepBounds }
+
+      for (let y = searchMinY; y <= searchMaxY; y += 1) {
+        for (let x = searchMinX; x <= searchMaxX; x += 1) {
+          if (x >= sweepBounds.minX && x <= sweepBounds.maxX && y >= sweepBounds.minY && y <= sweepBounds.maxY) {
+            continue
+          }
+
+          const pixelIndex = y * width + x
+          const offset = pixelIndex * 4
+          const alpha = data[offset + 3]
+          if (alpha <= 0) {
+            continue
+          }
+
+          if (colorDistanceSquaredUnpremultiplied(data, offset, seed) > sparseToleranceSquared) {
+            continue
+          }
+
+          data[offset] = 0
+          data[offset + 1] = 0
+          data[offset + 2] = 0
+          data[offset + 3] = 0
+          foundSparseMatch = true
+          nextBounds.minX = Math.min(nextBounds.minX, x)
+          nextBounds.minY = Math.min(nextBounds.minY, y)
+          nextBounds.maxX = Math.max(nextBounds.maxX, x)
+          nextBounds.maxY = Math.max(nextBounds.maxY, y)
+        }
+      }
+
+      if (!foundSparseMatch) {
+        break
+      }
+
+      sweepBounds = nextBounds
+    }
+  }
+
   context.putImageData(imageData, 0, 0)
   return true
 }
 
 function setActiveTool(tool: ToolId) {
   const previousTool = activeTool.value
-  if (hasFloatingSelection.value && previousTool !== tool && tool !== 'select') {
+  if (previousTool !== tool) {
+    finalizeTextEditor(true)
+  }
+
+  if (hasFloatingSelection.value && previousTool !== tool && tool !== 'lasso') {
     commitFloatingSelection(true)
   }
 
   activeTool.value = tool
+  hoverStrokePreviewId.value = null
+  clearPreviewCanvas()
   if (isBrushTool(tool) || isShapeTool(tool)) {
     lastPaintTool.value = tool
   }
+}
+
+function getBrushPresetByTool(tool: PaintToolId) {
+  return brushPresetItems.find((item) => item.tool === tool) ?? null
+}
+
+function handleToolSelection(tool: ToolId) {
+  if (isPaintTool(tool)) {
+    const preset = getBrushPresetByTool(tool)
+    if (preset) {
+      applyBrushPreset(preset.id)
+      return
+    }
+  }
+
+  setActiveTool(tool)
 }
 
 function startPan(event: PointerEvent) {
@@ -3115,15 +5076,46 @@ function stopPointerTracking(event: PointerEvent) {
   drawState.panning = false
   drawState.movingSelection = false
   drawState.selectingBox = false
+  drawState.textBoxSelecting = false
   drawState.lassoSelecting = false
   drawState.lassoPoints = []
   drawState.strokeEraseChanged = false
   drawState.lastStrokeErasePoint = null
   drawState.lastPoint = null
   drawState.startPoint = null
+  drawState.lastStrokeSize = 0
+  drawState.lastTimestamp = 0
+  discardRecordedStroke()
 }
 
-function handlePointerDown(event: PointerEvent) {
+function updateTextBoxSelection(point: Point) {
+  if (!drawState.startPoint) {
+    return
+  }
+
+  drawState.lastPoint = point
+  drawTextBoxPreview(buildRectFromPoints(drawState.startPoint.x, drawState.startPoint.y, point.x, point.y))
+}
+
+function finalizeTextBoxSelection(event: PointerEvent) {
+  const start = drawState.startPoint
+  if (!start) {
+    return
+  }
+
+  const end = toCanvasPoint(event) ?? start
+  const previewRect = buildRectFromPoints(start.x, start.y, end.x, end.y)
+  const isClick = previewRect.width < 12 && previewRect.height < 12
+  const defaultWidth = clamp(Math.max(220, Math.round(textStyle.size * 6)), 120, canvasWidth.value)
+  const defaultHeight = clamp(Math.max(88, Math.round(textStyle.size * 3.4)), 56, canvasHeight.value)
+  const rect = isClick
+    ? normalizeTextRect({ x: start.x, y: start.y, width: defaultWidth, height: defaultHeight })
+    : normalizeTextRect(previewRect)
+
+  openTextEditor(rect)
+}
+
+async function handlePointerDown(event: PointerEvent) {
   if (event.pointerType === 'mouse' && event.button === 1) {
     event.preventDefault()
     startPan(event)
@@ -3156,23 +5148,25 @@ function handlePointerDown(event: PointerEvent) {
     return
   }
 
-  if (activeTool.value === 'select' && hasFloatingSelection.value && isPointInFloatingSelection(point)) {
+  if (activeTool.value === 'text') {
+    if (hasFloatingSelection.value) {
+      commitFloatingSelection(true)
+    }
+
+    if (textEditor.active) {
+      finalizeTextEditor(true)
+    }
+
     drawState.pointerId = event.pointerId
     drawState.drawing = true
-    startSelectionMove(point)
+    drawState.startPoint = point
+    drawState.lastPoint = point
+    drawState.textBoxSelecting = true
 
     const host = event.currentTarget as HTMLElement | null
     host?.setPointerCapture(event.pointerId)
-    return
-  }
 
-  if (activeTool.value === 'select') {
-    drawState.pointerId = event.pointerId
-    drawState.drawing = true
-    beginSelectionBox(point)
-
-    const host = event.currentTarget as HTMLElement | null
-    host?.setPointerCapture(event.pointerId)
+    drawTextBoxPreview({ x: point.x, y: point.y, width: 1, height: 1 })
     return
   }
 
@@ -3195,6 +5189,7 @@ function handlePointerDown(event: PointerEvent) {
     drawState.drawing = true
     drawState.lassoSelecting = true
     drawState.lassoPoints = [point]
+    drawState.startPoint = point
 
     const host = event.currentTarget as HTMLElement | null
     host?.setPointerCapture(event.pointerId)
@@ -3210,22 +5205,6 @@ function handlePointerDown(event: PointerEvent) {
 
     const filled = floodFill(point)
     if (filled) {
-      renderComposite()
-      if (activeLayerId.value) {
-        refreshLayerThumbnail(activeLayerId.value)
-      }
-      pushHistorySnapshot()
-    }
-    return
-  }
-
-  if (activeTool.value === 'text') {
-    if (hasFloatingSelection.value) {
-      commitFloatingSelection(true)
-    }
-
-    const inserted = drawTextAtPoint(point)
-    if (inserted) {
       renderComposite()
       if (activeLayerId.value) {
         refreshLayerThumbnail(activeLayerId.value)
@@ -3256,6 +5235,9 @@ function handlePointerDown(event: PointerEvent) {
       return
     }
 
+    hoverStrokePreviewId.value = null
+    clearPreviewCanvas()
+
     drawState.pointerId = event.pointerId
     drawState.drawing = true
     drawState.lastPoint = point
@@ -3283,6 +5265,7 @@ function handlePointerDown(event: PointerEvent) {
   drawState.lastPoint = point
   drawState.startPoint = point
   drawState.lastPressure = pressure
+  drawState.lastTimestamp = event.timeStamp
 
   const host = event.currentTarget as HTMLElement | null
   host?.setPointerCapture(event.pointerId)
@@ -3297,8 +5280,24 @@ function handlePointerDown(event: PointerEvent) {
     return
   }
 
-  drawBrushSegment(context, point, point, pressure, pressure, activeTool.value)
+  const strokeSize = resolveStrokeWidth(activeTool.value, point, pressure, event.timeStamp, null, 0, 0)
+  drawState.lastStrokeSize = strokeSize
+
+  if (isRecordablePaintTool(activeTool.value)) {
+    beginRecordedStroke(layer.id, activeTool.value, point, pressure, strokeSize)
+  }
+
+  drawBrushSegment(
+    context,
+    { x: point.x, y: point.y, pressure, size: strokeSize },
+    { x: point.x, y: point.y, pressure, size: strokeSize },
+    activeTool.value
+  )
   renderComposite()
+}
+
+function resetTextDraft() {
+  textDraft.value = defaultTextDraft
 }
 
 function handlePointerMove(event: PointerEvent) {
@@ -3327,6 +5326,16 @@ function handlePointerMove(event: PointerEvent) {
     return
   }
 
+  if (drawState.textBoxSelecting && drawState.pointerId === event.pointerId) {
+    const point = toCanvasPoint(event)
+    if (!point) {
+      return
+    }
+
+    updateTextBoxSelection(point)
+    return
+  }
+
   if (drawState.lassoSelecting && drawState.pointerId === event.pointerId) {
     const point = toCanvasPoint(event)
     if (!point) {
@@ -3343,6 +5352,7 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   if (!drawState.drawing || drawState.pointerId !== event.pointerId) {
+    updateStrokeHoverPreview(toCanvasPoint(event))
     return
   }
 
@@ -3373,6 +5383,7 @@ function handlePointerMove(event: PointerEvent) {
     drawShapePreview(drawState.startPoint, point)
     drawState.lastPoint = point
     drawState.lastPressure = pressure
+    drawState.lastTimestamp = event.timeStamp
     return
   }
 
@@ -3387,9 +5398,30 @@ function handlePointerMove(event: PointerEvent) {
     return
   }
 
-  drawBrushSegment(context, from, point, drawState.lastPressure, pressure, activeTool.value)
+  const strokeSize = resolveStrokeWidth(
+    activeTool.value,
+    point,
+    pressure,
+    event.timeStamp,
+    from,
+    drawState.lastStrokeSize,
+    drawState.lastTimestamp
+  )
+
+  if (isRecordablePaintTool(activeTool.value)) {
+    appendRecordedStrokePoint(point, pressure, strokeSize)
+  }
+
+  drawBrushSegment(
+    context,
+    { x: from.x, y: from.y, pressure: drawState.lastPressure, size: drawState.lastStrokeSize },
+    { x: point.x, y: point.y, pressure, size: strokeSize },
+    activeTool.value
+  )
   drawState.lastPoint = point
   drawState.lastPressure = pressure
+  drawState.lastStrokeSize = strokeSize
+  drawState.lastTimestamp = event.timeStamp
   renderComposite()
 }
 
@@ -3411,9 +5443,22 @@ function finishDrawing(event: PointerEvent) {
     return
   }
 
+  if (drawState.textBoxSelecting && drawState.pointerId === event.pointerId) {
+    finalizeTextBoxSelection(event)
+    stopPointerTracking(event)
+    return
+  }
+
   if (drawState.lassoSelecting && drawState.pointerId === event.pointerId) {
     const points = [...drawState.lassoPoints]
-    if (points.length >= 3) {
+    const start = points[0] ?? drawState.startPoint
+    const end = toCanvasPoint(event) ?? points[points.length - 1] ?? start
+    const clickDistance = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : Number.POSITIVE_INFINITY
+    const isClickSelection = points.length < 3 || clickDistance <= 4
+
+    if (isClickSelection && start) {
+      trySelectObjectAtPoint(start)
+    } else if (points.length >= 3) {
       const first = points[0]!
       const last = points[points.length - 1]!
       if (Math.hypot(first.x - last.x, first.y - last.y) > 2) {
@@ -3444,6 +5489,11 @@ function finishDrawing(event: PointerEvent) {
     return
   }
 
+  if (isRecordablePaintTool(activeTool.value)) {
+    applyPenTerminalAccent()
+    commitRecordedStroke()
+  }
+
   if (isShapeTool(activeTool.value) && drawState.startPoint) {
     const end = toCanvasPoint(event) ?? drawState.startPoint
     commitShape(drawState.startPoint, end)
@@ -3472,6 +5522,8 @@ function handlePointerLeave(event: PointerEvent) {
     return
   }
 
+  hoverStrokePreviewId.value = null
+  clearPreviewCanvas()
   finishDrawing(event)
 }
 
@@ -3535,6 +5587,7 @@ function handleViewportWheel(event: WheelEvent) {
 
 function resizeCanvasPreserveContent(nextWidth: number, nextHeight: number) {
   finalizeFloatingSelection()
+  clearAllLayerStrokeHistories()
 
   const clampedWidth = clamp(Math.round(nextWidth), 320, 6000)
   const clampedHeight = clamp(Math.round(nextHeight), 240, 6000)
@@ -3548,7 +5601,7 @@ function resizeCanvasPreserveContent(nextWidth: number, nextHeight: number) {
   for (const layer of layers.value) {
     const previous = getLayerRaster(layer.id)
     const raster = createLayerRaster(clampedWidth, clampedHeight)
-    const context = raster.getContext('2d')
+    const context = getCanvas2DContext(raster, true)
     if (context && previous) {
       context.drawImage(previous, 0, 0)
     }
@@ -3578,7 +5631,9 @@ function applyCanvasSize() {
 }
 
 function initializeDocument(width: number, height: number, backgroundColor = '#ffffff') {
+  cancelTextEditor()
   clearFloatingSelection()
+  clearAllLayerStrokeHistories()
 
   canvasWidth.value = clamp(Math.round(width), 320, 6000)
   canvasHeight.value = clamp(Math.round(height), 240, 6000)
@@ -3636,6 +5691,7 @@ function duplicateActiveLayer() {
   if (target) {
     target.drawImage(source, 0, 0)
   }
+  resetLayerStrokeHistoryFromCurrent(duplicated.id)
 
   const index = layers.value.findIndex((layer) => layer.id === current.id)
   layers.value.splice(index + 1, 0, duplicated)
@@ -3661,6 +5717,7 @@ function removeActiveLayer() {
   const removed = layers.value[index]
   layers.value.splice(index, 1)
   layerRasterMap.delete(removed.id)
+  layerStrokeHistoryMap.delete(removed.id)
 
   const next = layers.value[Math.min(index, layers.value.length - 1)]
   activeLayerId.value = next?.id ?? null
@@ -3807,12 +5864,14 @@ function clearActiveLayer() {
   }
 
   context.clearRect(0, 0, canvasWidth.value, canvasHeight.value)
+  resetLayerStrokeHistoryFromCurrent(layer.id)
   renderComposite()
   refreshLayerThumbnail(layer.id)
   pushHistorySnapshot()
 }
 
 function commitLayerMutation(layerId: string, refreshAll = false) {
+  resetLayerStrokeHistoryFromCurrent(layerId)
   renderComposite()
   if (refreshAll) {
     refreshAllLayerThumbnails()
@@ -3846,7 +5905,7 @@ function transformActiveLayer(transform: (context: CanvasRenderingContext2D, sou
   }
 
   const source = createLayerRaster(canvasWidth.value, canvasHeight.value)
-  const sourceContext = source.getContext('2d')
+  const sourceContext = getCanvas2DContext(source, true)
   if (!sourceContext) {
     return
   }
@@ -4055,6 +6114,7 @@ function mergeActiveLayerDown() {
 
   layers.value.splice(index, 1)
   layerRasterMap.delete(sourceLayer.id)
+  layerStrokeHistoryMap.delete(sourceLayer.id)
   activeLayerId.value = targetLayer.id
   commitLayerMutation(targetLayer.id, true)
 }
@@ -4113,6 +6173,7 @@ function mergeVisibleLayers() {
       nextLayers.push(layer)
     } else {
       layerRasterMap.delete(layer.id)
+      layerStrokeHistoryMap.delete(layer.id)
     }
 
     if (index === insertAt) {
@@ -4382,6 +6443,7 @@ async function importImageDataUrl(dataUrl: string, layerName: string, createNewL
   const offsetX = (canvasWidth.value - drawWidth) / 2
   const offsetY = (canvasHeight.value - drawHeight) / 2
   context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight)
+  resetLayerStrokeHistoryFromCurrent(targetLayer.id)
 
   renderComposite()
   refreshLayerThumbnail(targetLayer.id)
@@ -4425,7 +6487,7 @@ function parseProjectFile(raw: unknown): ProjectFile | null {
   }
 
   return {
-    version: 1,
+    version: value.version === 3 ? 3 : value.version === 2 ? 2 : 1,
     width,
     height,
     documentName: typeof value.documentName === 'string' && value.documentName.trim() ? value.documentName : '未命名 1',
@@ -4433,6 +6495,35 @@ function parseProjectFile(raw: unknown): ProjectFile | null {
       .map((layer) => {
         const item = layer as Partial<LayerSnapshot>
         const blend = blendModeOptions.find((mode) => mode.value === item.blendMode)?.value ?? 'source-over'
+        const strokeHistory = (() => {
+          const rawHistory = item.strokeHistory
+          if (!rawHistory || typeof rawHistory !== 'object') {
+            return undefined
+          }
+
+          const historyValue = rawHistory as Partial<SerializedLayerStrokeHistory>
+          return {
+            baseImage: typeof historyValue.baseImage === 'string' ? historyValue.baseImage : '',
+            strokes: Array.isArray(historyValue.strokes) ? historyValue.strokes as SerializedBrushStrokeRecord[] : []
+          } satisfies SerializedLayerStrokeHistory
+        })()
+        const textElements = Array.isArray(item.textElements)
+          ? item.textElements
+              .filter((textItem) => textItem && typeof textItem === 'object')
+              .map((textItem) => {
+                const value = textItem as Partial<SerializedTextElement>
+                return {
+                  id: typeof value.id === 'string' && value.id ? value.id : createId(),
+                  x: Number(value.x ?? 0),
+                  y: Number(value.y ?? 0),
+                  width: Number(value.width ?? 240),
+                  height: Number(value.height ?? 96),
+                  text: typeof value.text === 'string' ? value.text : '',
+                  style: cloneTextStyleSnapshot(value.style ?? captureCurrentTextStyle())
+                } satisfies SerializedTextElement
+              })
+          : []
+
         return {
           id: typeof item.id === 'string' && item.id ? item.id : createId(),
           name: typeof item.name === 'string' && item.name ? item.name : `图层 ${Math.floor(Math.random() * 100)}`,
@@ -4440,14 +6531,19 @@ function parseProjectFile(raw: unknown): ProjectFile | null {
           locked: item.locked === true,
           opacity: clamp(Number(item.opacity ?? 1), 0, 1),
           blendMode: blend,
-          image: typeof item.image === 'string' ? item.image : ''
+          image: typeof item.image === 'string' ? item.image : '',
+          strokeHistory,
+          textElements
         } as LayerSnapshot
       })
   }
 }
 
 async function openProject(project: ProjectFile) {
+  cancelTextEditor()
   clearFloatingSelection()
+  clearAllLayerStrokeHistories()
+  layerTextMap.clear()
 
   canvasWidth.value = clamp(Math.round(project.width), 320, 6000)
   canvasHeight.value = clamp(Math.round(project.height), 240, 6000)
@@ -4476,13 +6572,16 @@ async function openProject(project: ProjectFile) {
     if (item.image) {
       try {
         const image = await loadImage(item.image)
-        const context = raster.getContext('2d')
+        const context = getCanvas2DContext(raster, true)
         if (context) {
           context.drawImage(image, 0, 0, canvasWidth.value, canvasHeight.value)
         }
       } catch {
       }
     }
+
+    await restoreLayerStrokeHistory(layer.id, item.strokeHistory)
+    restoreLayerTextElements(layer.id, item.textElements)
   }
 
   if (layers.value.length === 0) {
@@ -4566,7 +6665,7 @@ async function saveProject() {
   finalizeFloatingSelection()
 
   const project: ProjectFile = {
-    version: 1,
+    version: 3,
     width: canvasWidth.value,
     height: canvasHeight.value,
     documentName: documentName.value,
@@ -4577,7 +6676,9 @@ async function saveProject() {
       locked: layer.locked,
       opacity: layer.opacity,
       blendMode: layer.blendMode,
-      image: getLayerRaster(layer.id)?.toDataURL('image/png') ?? ''
+      image: getLayerRaster(layer.id)?.toDataURL('image/png') ?? '',
+      strokeHistory: serializeLayerStrokeHistory(layer.id) ?? undefined,
+      textElements: serializeLayerTextElements(layer.id)
     }))
   }
 
@@ -4678,6 +6779,15 @@ function handleBrushPresetChange() {
   applyBrushPreset(brushPresetId.value)
 }
 
+function handleBrushPresetClick(presetId: BrushPresetId) {
+  if (brushPresetId.value === presetId && activeTool.value === presetId) {
+    return
+  }
+
+  brushPresetId.value = presetId
+  handleBrushPresetChange()
+}
+
 function applyBrushPreset(presetId: BrushPresetId) {
   finalizeFloatingSelection()
 
@@ -4686,6 +6796,7 @@ function applyBrushPreset(presetId: BrushPresetId) {
     return
   }
 
+  brushPresetId.value = presetId
   brushName.value = preset.label
   brushColor.value = preset.color
   brushSize.value = preset.size
@@ -4754,6 +6865,48 @@ function handleKeydown(event: KeyboardEvent) {
     event.preventDefault()
     closeMenu()
     return
+  }
+
+  if (textEditor.active) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelTextEditor()
+      return
+    }
+
+    if (commandPressed && event.key === 'Enter') {
+      event.preventDefault()
+      applyTextEditor()
+      return
+    }
+
+    if (commandPressed && event.altKey && key === 'arrowup') {
+      event.preventDefault()
+      adjustTextSize(2)
+      focusTextEditor()
+      return
+    }
+
+    if (commandPressed && event.altKey && key === 'arrowdown') {
+      event.preventDefault()
+      adjustTextSize(-2)
+      focusTextEditor()
+      return
+    }
+
+    if (commandPressed && !event.altKey && !event.shiftKey && key === 'b') {
+      event.preventDefault()
+      toggleTextBold()
+      focusTextEditor()
+      return
+    }
+
+    if (commandPressed && !event.altKey && !event.shiftKey && key === 'i') {
+      event.preventDefault()
+      toggleTextItalic()
+      focusTextEditor()
+      return
+    }
   }
 
   if (isTypingTarget) {
@@ -4970,12 +7123,12 @@ function handleKeydown(event: KeyboardEvent) {
   }
 
   if (key === 'm') {
-    setActiveTool('select')
+    setActiveTool('lasso')
     return
   }
 
   if (key === 'v') {
-    setActiveTool('select')
+    setActiveTool('lasso')
   }
 }
 
@@ -4990,7 +7143,7 @@ function handleResize() {
 }
 
 onMounted(() => {
-  applyBrushPreset('soft-round')
+  applyBrushPreset('brush')
   initializeDocument(canvasWidth.value, canvasHeight.value, documentBackgroundColor.value)
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('keyup', handleKeyup)
@@ -5172,6 +7325,110 @@ onBeforeUnmount(() => {
   padding: 10px;
 }
 
+.help-about {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.help-section-card {
+  border: 1px solid #5f6571;
+  border-radius: 10px;
+  background: #4a4f59;
+  padding: 12px;
+}
+
+.help-section-card + .help-section-card {
+  margin-top: 10px;
+}
+
+.help-section-header {
+  margin-bottom: 10px;
+}
+
+.help-section-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #f8fafc;
+}
+
+.help-section-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.about-hero {
+  border: 1px solid #607086;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(14, 165, 233, 0.08));
+  padding: 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.about-kicker {
+  margin: 0 0 6px;
+  color: #bfdbfe;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.about-hero h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #f8fafc;
+}
+
+.about-description {
+  margin: 8px 0 0;
+  color: #dbeafe;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.about-version {
+  flex-shrink: 0;
+  border: 1px solid rgba(191, 219, 254, 0.32);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.28);
+  color: #eff6ff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+.about-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.about-fact-card {
+  border: 1px solid #5f6571;
+  border-radius: 10px;
+  background: #4a4f59;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.about-fact-card span {
+  color: #b6bfcc;
+  font-size: 11px;
+}
+
+.about-fact-card strong {
+  color: #f8fafc;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .help-shortcut-search {
   display: flex;
   align-items: center;
@@ -5256,11 +7513,14 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   border-bottom: 1px solid #46484d;
   background: #3a3c42;
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 0 10px;
+  overflow: visible;
 }
 
 .menu-left,
@@ -5269,19 +7529,32 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow-x: visible;
+  overflow-y: visible;
   min-width: 0;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
 
 .menu-left {
   flex: 1;
+  position: relative;
 }
 
 .menu-right {
   flex: 1;
   justify-content: flex-end;
+  position: relative;
+}
+
+.menu-version {
+  flex-shrink: 0;
+  border: 1px solid #5f6571;
+  border-radius: 999px;
+  background: #494d56;
+  color: #cbd5e1;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 9px;
 }
 
 .menu-item,
@@ -5311,7 +7584,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  z-index: 20;
+  z-index: 80;
   min-width: 220px;
   border: 1px solid #656c79;
   border-radius: 8px;
@@ -5419,15 +7692,56 @@ onBeforeUnmount(() => {
   min-width: 118px;
 }
 
-.toolbar-text-input {
-  width: 170px;
-  height: 28px;
+.toolbar-group-text,
+.toolbar-group-text-preview {
+  align-items: flex-start;
+}
+
+.toolbar-textarea {
+  width: 220px;
+  min-height: 56px;
   border: 1px solid #5c606b;
   border-radius: 6px;
   background: #50545d;
   color: #f8fafc;
   font-size: 12px;
-  padding: 0 8px;
+  line-height: 1.5;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.toolbar-text-meta {
+  width: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.toolbar-link-btn {
+  border: none;
+  background: transparent;
+  color: #93c5fd;
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.toolbar-font-preview {
+  min-width: 180px;
+  max-width: 240px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #5c606b;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(84, 92, 105, 0.95), rgba(54, 59, 68, 0.95));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .toolbar-toggle {
@@ -5517,6 +7831,32 @@ onBeforeUnmount(() => {
   gap: 6px;
   font-size: 12px;
   flex-shrink: 0;
+}
+
+.brush-type-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brush-type-btn {
+  height: 28px;
+  border: 1px solid #5c606b;
+  border-radius: 999px;
+  background: #50545d;
+  color: #f8fafc;
+  font-size: 12px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.brush-type-btn:hover {
+  background: #5d6470;
+}
+
+.brush-type-btn-active {
+  border-color: #96c8ff;
+  background: #3f6ea9;
 }
 
 .shape-strip {
@@ -5684,6 +8024,60 @@ onBeforeUnmount(() => {
 
 .stage-preview {
   pointer-events: none;
+}
+
+.canvas-text-editor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.canvas-text-editor-input {
+  position: absolute;
+  padding: 8px 10px;
+  border: 1px dashed rgba(96, 165, 250, 0.95);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 10px 22px rgba(15, 23, 42, 0.14);
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  pointer-events: auto;
+}
+
+.canvas-text-editor-toolbar {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(71, 85, 105, 0.35);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 12px 20px rgba(15, 23, 42, 0.22);
+  pointer-events: auto;
+}
+
+.canvas-text-editor-btn {
+  height: 26px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.9);
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.canvas-text-editor-btn-primary {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(37, 99, 235, 0.95);
+}
+
+.canvas-text-editor-hint {
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .side-panel {
@@ -5930,12 +8324,16 @@ onBeforeUnmount(() => {
 .menu-action:focus-visible,
 .menu-popup-item:focus-visible,
 .toolbar-select:focus-visible,
-.toolbar-text-input:focus-visible,
+.toolbar-textarea:focus-visible,
 .toolbar-action:focus-visible,
 .toolbar-toggle:focus-visible,
+.toolbar-link-btn:focus-visible,
+.brush-type-btn:focus-visible,
 .toolbar-color:focus-visible,
 .toolbar-number:focus-visible,
 .shape-strip-btn:focus-visible,
+.canvas-text-editor-input:focus-visible,
+.canvas-text-editor-btn:focus-visible,
 .dialog-input:focus-visible,
 .dialog-color:focus-visible,
 .dialog-btn:focus-visible,
@@ -5978,6 +8376,11 @@ onBeforeUnmount(() => {
     display: none;
   }
 
+  .menu-left {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
   .help-dialog {
     width: calc(100vw - 20px);
     max-height: calc(100vh - 24px);
@@ -5996,6 +8399,14 @@ onBeforeUnmount(() => {
   .help-shortcut-search {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .about-hero {
+    flex-direction: column;
+  }
+
+  .about-facts {
+    grid-template-columns: 1fr;
   }
 
   .help-search-count {
