@@ -12,7 +12,7 @@
 
 ## 发布下载
 
-- 当前发布页：`v1.0.0 - Private Workspace Baseline`
+- 当前发布页：`v1.0.0 - Workspace Baseline`
 - Windows 安装程序会作为独立资产上传到 GitHub Releases
 - 桌面产物说明见 `desktop/README.md`
 
