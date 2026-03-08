@@ -22,10 +22,10 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=drawing_board
 DB_USER=postgres
-DB_PASSWORD=password
+DB_PASSWORD=<set-a-local-database-password>
 
 # JWT配置
-JWT_SECRET=your-jwt-secret-key-change-in-production
+JWT_SECRET=<generate-a-random-secret-at-least-32-chars>
 JWT_EXPIRATION=86400
 
 # 前端配置
@@ -116,8 +116,8 @@ class CanvasE2ETest {
 ```
 
 ### 3.3 测试覆盖率要求
-- **单元测试**: >90% (JaCoCo强制)
-- **集成测试**: 所有模块边界
+- **单元测试**: 优先覆盖核心领域逻辑与关键应用服务
+- **集成测试**: 覆盖主要模块边界与核心联调流程
 - **E2E测试**: 关键用户流程
 
 ## 4. Git工作流
