@@ -13,6 +13,7 @@ desktop.ini
 
 # 构建输出
 build/
+bin/
 dist/
 out/
 target/
