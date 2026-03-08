@@ -1,0 +1,39 @@
+name: Desktop Release Gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'desktop-v*'
+
+jobs:
+  verify-release-assets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install desktop release tools
+        working-directory: desktop
+        run: npm install
+
+      - name: Ensure public key exists
+        env:
+          DRAWING_BOARD_RELEASE_PUBLIC_KEY: ${{ secrets.DRAWING_BOARD_RELEASE_PUBLIC_KEY }}
+        run: |
+          if [ -z "$DRAWING_BOARD_RELEASE_PUBLIC_KEY" ]; then
+            echo "Missing secret: DRAWING_BOARD_RELEASE_PUBLIC_KEY"
+            exit 1
+          fi
+
+      - name: Verify release assets
+        working-directory: desktop
+        env:
+          DRAWING_BOARD_RELEASE_PUBLIC_KEY: ${{ secrets.DRAWING_BOARD_RELEASE_PUBLIC_KEY }}
+        run: npm run release:prepare -- --public-key "$DRAWING_BOARD_RELEASE_PUBLIC_KEY" --strict

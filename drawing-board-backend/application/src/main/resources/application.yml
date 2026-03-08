@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: drawing-board-backend
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:drawing_board}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:password}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${APP_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:change-this-secret-in-production-at-least-32-bytes-long}
+    access-expiration-seconds: ${JWT_EXPIRATION:86400}
+    refresh-expiration-seconds: ${JWT_REFRESH_EXPIRATION:604800}

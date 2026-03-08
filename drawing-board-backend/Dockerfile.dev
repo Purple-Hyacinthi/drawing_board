@@ -1,0 +1,48 @@
+# 开发环境Dockerfile
+FROM eclipse-temurin:21-jdk-alpine AS builder
+
+# 安装必要工具
+RUN apk add --no-cache bash git
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制Gradle Wrapper
+COPY gradlew .
+COPY gradle/wrapper gradle/wrapper
+COPY gradle.properties .
+
+# 复制构建配置
+COPY settings.gradle.kts .
+COPY build.gradle.kts .
+
+# 复制模块配置
+COPY application/build.gradle.kts application/
+COPY user/build.gradle.kts user/
+COPY canvas/build.gradle.kts canvas/
+COPY drawing/build.gradle.kts drawing/
+COPY export/build.gradle.kts export/
+
+# 授予执行权限
+RUN chmod +x gradlew
+
+# 复制源码
+COPY application/src application/src
+COPY user/src user/src
+COPY canvas/src canvas/src
+COPY drawing/src drawing/src
+COPY export/src export/src
+
+# 开发阶段 - 运行应用
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+# 复制运行时文件
+COPY --from=builder /app .
+
+# 暴露端口
+EXPOSE 8080
+
+# 开发模式命令 - 使用Gradle Wrapper运行
+CMD ["./gradlew", "bootRun"]

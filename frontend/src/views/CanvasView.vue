@@ -335,30 +335,11 @@
         <span class="toolbar-chip">{{ activeShapeLabel }}</span>
       </div>
 
-      <div class="toolbar-group toolbar-group-text" v-if="activeTool === 'text'">
-        <span class="toolbar-label">文字内容</span>
-        <textarea
-          v-model="textDraft"
-          class="toolbar-textarea"
-          rows="2"
-          placeholder="输入文字内容，可换行后点击画布"
-        />
-        <div class="toolbar-text-meta">
-          <span>{{ textLineCount }} 行</span>
-          <button type="button" class="toolbar-link-btn" @click="resetTextDraft">重置示例</button>
-        </div>
-      </div>
-
       <div class="toolbar-group" v-if="activeTool === 'text'">
         <span class="toolbar-label">字体</span>
         <select v-model="textStyle.fontFamily" class="toolbar-select">
           <option v-for="font in fontOptions" :key="font.value" :value="font.value">{{ font.label }}</option>
         </select>
-      </div>
-
-      <div class="toolbar-group toolbar-group-text-preview" v-if="activeTool === 'text'">
-        <span class="toolbar-label">预览</span>
-        <div class="toolbar-font-preview" :style="textPreviewStyle">{{ textPreviewText }}</div>
       </div>
 
       <div class="toolbar-group" v-if="activeTool === 'text'">
@@ -389,6 +370,44 @@
         >
           斜体
         </button>
+      </div>
+
+      <div class="toolbar-group" v-if="activeTool === 'text'">
+        <span class="toolbar-label">对齐</span>
+        <button
+          type="button"
+          class="toolbar-toggle"
+          :class="{ 'toolbar-toggle-active': textStyle.align === 'left' }"
+          @click="textStyle.align = 'left'"
+        >
+          左对齐
+        </button>
+        <button
+          type="button"
+          class="toolbar-toggle"
+          :class="{ 'toolbar-toggle-active': textStyle.align === 'center' }"
+          @click="textStyle.align = 'center'"
+        >
+          居中
+        </button>
+        <button
+          type="button"
+          class="toolbar-toggle"
+          :class="{ 'toolbar-toggle-active': textStyle.align === 'right' }"
+          @click="textStyle.align = 'right'"
+        >
+          右对齐
+        </button>
+      </div>
+
+      <div class="toolbar-group" v-if="activeTool === 'text'">
+        <span class="toolbar-label">行距</span>
+        <input v-model.number="textStyle.lineHeight" type="number" min="1" max="3" step="0.05" class="toolbar-number" />
+      </div>
+
+      <div class="toolbar-group" v-if="activeTool === 'text'">
+        <span class="toolbar-label">字距</span>
+        <input v-model.number="textStyle.letterSpacing" type="number" min="-8" max="40" step="0.5" class="toolbar-number" />
       </div>
 
       <div class="toolbar-group" v-if="showColorControl">
@@ -476,6 +495,7 @@
             :style="{ ...stageStyle, cursor: stageCursor }"
             @contextmenu.prevent
             @pointerdown="handlePointerDown"
+            @dblclick="handleStageDoubleClick"
             @pointermove="handlePointerMove"
             @pointerup="handlePointerUp"
             @pointercancel="handlePointerCancel"
@@ -493,12 +513,24 @@
                 @pointerdown.stop
               />
               <div class="canvas-text-editor-toolbar" :style="textEditorToolbarStyle" @pointerdown.stop>
+                <button type="button" class="canvas-text-editor-btn" @pointerdown.stop.prevent="startTextEditorMove">
+                  移动
+                </button>
                 <button type="button" class="canvas-text-editor-btn canvas-text-editor-btn-primary" @click="applyTextEditor">
                   应用
                 </button>
                 <button type="button" class="canvas-text-editor-btn" @click="cancelTextEditor">取消</button>
                 <span class="canvas-text-editor-hint">Ctrl+Enter 应用，Esc 取消</span>
               </div>
+              <button
+                v-for="handle in textResizeHandles"
+                :key="handle"
+                type="button"
+                class="canvas-text-editor-resize"
+                :style="getTextEditorHandleStyle(handle)"
+                @pointerdown.stop.prevent="startTextEditorResize(handle, $event)"
+                :aria-label="`调整文字框大小-${handle}`"
+              ></button>
             </div>
           </div>
         </div>
@@ -711,6 +743,7 @@ type EraserMode = 'normal' | 'stroke'
 type SelectionKind = 'rect' | 'lasso'
 type HelpTab = 'usage' | 'shortcuts' | 'menu' | 'about'
 type PaintToolId = 'brush' | 'pencil' | 'ink' | 'pen'
+type TextAlignMode = 'left' | 'center' | 'right'
 type ShapeType =
   | 'line'
   | 'curve'
@@ -793,6 +826,9 @@ interface TextStyleSnapshot {
   color: string
   bold: boolean
   italic: boolean
+  align: TextAlignMode
+  lineHeight: number
+  letterSpacing: number
 }
 
 interface TextElementModel {
@@ -1085,14 +1121,15 @@ const brushSize = ref(12)
 const brushOpacity = ref(60)
 const eraserMode = ref<EraserMode>('normal')
 const shapeType = ref<ShapeType>('line')
-const defaultTextDraft = '示例文字\n点击画布后插入'
-const textDraft = ref(defaultTextDraft)
 const textStyle = reactive({
   fontFamily: 'MiSans',
   size: 48,
   color: '#101114',
   bold: false,
-  italic: false
+  italic: false,
+  align: 'left' as TextAlignMode,
+  lineHeight: 1.35,
+  letterSpacing: 0
 })
 const filterIntensity = ref(60)
 const pressureEnabled = ref(true)
@@ -1113,34 +1150,6 @@ const fontOptions = [
   { label: 'OPPOSans', value: 'OPPOSans' }
 ] as const
 
-const textLineCount = computed(() => {
-  const source = textEditor.active ? textEditor.text : textDraft.value
-  const normalized = source.replace(/\r\n/g, '\n').trim()
-  if (!normalized) {
-    return 0
-  }
-
-  return normalized.split('\n').length
-})
-
-const textPreviewText = computed(() => {
-  const source = textEditor.active ? textEditor.text : textDraft.value
-  const normalized = source.replace(/\r\n/g, '\n').trim()
-  if (!normalized) {
-    return '文字预览'
-  }
-
-  return normalized.split('\n')[0] || '文字预览'
-})
-
-const textPreviewStyle = computed(() => ({
-  fontFamily: `"${textStyle.fontFamily}", "MiSans", "OPPOSans", "Noto Sans SC", "Microsoft YaHei", sans-serif`,
-  fontSize: `${clamp(Math.round(textStyle.size), 8, 360)}px`,
-  fontWeight: textStyle.bold ? '700' : '400',
-  fontStyle: textStyle.italic ? 'italic' : 'normal',
-  color: textStyle.color
-}))
-
 const textEditorStyle = computed(() => ({
   left: `${textEditor.x}px`,
   top: `${textEditor.y}px`,
@@ -1151,7 +1160,9 @@ const textEditorStyle = computed(() => ({
   fontWeight: textStyle.bold ? '700' : '400',
   fontStyle: textStyle.italic ? 'italic' : 'normal',
   color: textStyle.color,
-  lineHeight: `${Math.max(12, Math.round(clamp(Math.round(textStyle.size), 8, 360) * 1.35))}px`
+  lineHeight: String(textStyle.lineHeight),
+  textAlign: textStyle.align,
+  letterSpacing: `${textStyle.letterSpacing}px`
 }))
 
 const textEditorToolbarStyle = computed(() => ({
@@ -1159,16 +1170,41 @@ const textEditorToolbarStyle = computed(() => ({
   top: `${Math.min(canvasHeight.value - 36, textEditor.y + textEditor.height + 8)}px`
 }))
 
-const textEditorResizeHandleStyle = computed(() => ({
-  left: `${textEditor.x + textEditor.width - 8}px`,
-  top: `${textEditor.y + textEditor.height - 8}px`
-}))
+function getTextEditorHandleStyle(handle: TextResizeHandle) {
+  const half = 8
+  const centerX = textEditor.x + textEditor.width / 2
+  const centerY = textEditor.y + textEditor.height / 2
+  const left = textEditor.x
+  const right = textEditor.x + textEditor.width
+  const top = textEditor.y
+  const bottom = textEditor.y + textEditor.height
+
+  const positionMap: Record<TextResizeHandle, { left: number; top: number; cursor: string }> = {
+    nw: { left: left - half, top: top - half, cursor: 'nwse-resize' },
+    n: { left: centerX - half, top: top - half, cursor: 'ns-resize' },
+    ne: { left: right - half, top: top - half, cursor: 'nesw-resize' },
+    e: { left: right - half, top: centerY - half, cursor: 'ew-resize' },
+    se: { left: right - half, top: bottom - half, cursor: 'nwse-resize' },
+    s: { left: centerX - half, top: bottom - half, cursor: 'ns-resize' },
+    sw: { left: left - half, top: bottom - half, cursor: 'nesw-resize' },
+    w: { left: left - half, top: centerY - half, cursor: 'ew-resize' }
+  }
+
+  const item = positionMap[handle]
+  return {
+    left: `${item.left}px`,
+    top: `${item.top}px`,
+    cursor: item.cursor
+  }
+}
 
 const usageTips = [
   '画布移动默认使用鼠标中键拖动，按住空格可临时拖动。',
+  '套索选择支持两种方式：拖拽可自由圈选，单击可直接点选画笔笔迹或文本框。',
+  '出现浮动选区后，可继续拖动移动位置，再用“应用选区”或“取消选区”完成处理。',
   '文字工具可用 Ctrl+B 与 Ctrl+I 切换粗体和斜体。',
   '滤镜会作用于当前活动图层，可先用“滤镜强度”调节结果。',
-  '图层合并与滤镜操作都会写入历史，可用 Ctrl+Z 撤销。'
+  '套索选择、图层合并与滤镜操作都会写入历史，可用 Ctrl+Z 撤销。'
 ] as const
 
 const appDisplayName = computed(() => import.meta.env.VITE_APP_NAME || 'Drawing Board Pro')
@@ -1183,8 +1219,8 @@ const menuGuideSections = [
   },
   {
     title: '编辑',
-    description: '围绕当前编辑状态进行撤销和选区处理。',
-    items: ['撤销与重做会记录图层绘制、滤镜与合并操作。', '浮动选区可应用到图层，也可一键取消。']
+    description: '围绕当前编辑状态进行撤销，以及套索选择后的处理。',
+    items: ['撤销与重做会记录图层绘制、套索选择、滤镜与合并操作。', '套索选择生成浮动选区后，可应用回图层，也可一键取消。']
   },
   {
     title: '图像',
@@ -1212,13 +1248,13 @@ const aboutFacts = computed(() => [
   { label: '应用名称', value: appDisplayName.value },
   { label: 'App 版本', value: `v${appVersion}` },
   { label: '运行环境', value: runtimeModeLabel.value },
-  { label: '核心能力', value: '图层 / 选区 / 文字 / 滤镜' }
+  { label: '核心能力', value: '图层 / 套索选择 / 文字 / 滤镜' }
 ])
 
 const aboutLines = [
-  '内置多图层绘制、选区编辑、文字排版与滤镜处理能力。',
+  '内置多图层绘制、套索选择、文字排版与滤镜处理能力。',
   '菜单栏已按文件、编辑、图像、图层、文字、滤镜、视图、窗口、帮助进行分组。',
-  '帮助中心会同步展示当前 App 版本与运行环境信息。'
+  '帮助中心会同步展示当前 App 版本、运行环境，以及套索选择相关提示。'
 ] as const
 
 const brushStyle = reactive<BrushStyleState>({
@@ -1293,6 +1329,9 @@ const selectionState = reactive({
 
 type TextEditorMode = 'create' | 'edit'
 type TextEditorInteraction = 'idle' | 'move' | 'resize'
+type TextResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
+
+const textResizeHandles: TextResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
 const textEditor = reactive({
   active: false,
@@ -1306,6 +1345,7 @@ const textEditor = reactive({
   height: 120,
   text: '',
   pointerId: null as number | null,
+  resizeHandle: 'se' as TextResizeHandle,
   anchorX: 0,
   anchorY: 0,
   startX: 0,
@@ -1645,7 +1685,7 @@ const shortcutTips = computed<ShortcutTipItem[]>(() => {
 
   const extraShortcuts: ShortcutTipItem[] = [
     { key: 'Ctrl+Y', description: '重做（兼容快捷键）' },
-    { key: 'B / P / E / I / G / L / U / T / M / V', description: '快速切换工具，M / V 均切到套索选择' },
+    { key: 'B / P / E / I / G / L / U / T / M / V', description: '快速切换工具，M / V 可直接切到套索选择并执行圈选或点选' },
     { key: 'Space', description: '临时拖动画布' }
   ]
 
@@ -1722,15 +1762,19 @@ watch([canvasWidth, canvasHeight], ([width, height]) => {
   canvasSizeDraft.height = height
 }, { immediate: true })
 
-watch(textDraft, (value) => {
-  if (textEditor.active && value !== textEditor.text) {
-    textEditor.text = value
+watch(() => textStyle.lineHeight, (value) => {
+  const numericValue = Number(value)
+  const nextValue = Number.isFinite(numericValue) ? clamp(numericValue, 1, 3) : 1.35
+  if (nextValue !== value) {
+    textStyle.lineHeight = nextValue
   }
 })
 
-watch(() => textEditor.text, (value) => {
-  if (textEditor.active && value !== textDraft.value) {
-    textDraft.value = value
+watch(() => textStyle.letterSpacing, (value) => {
+  const numericValue = Number(value)
+  const nextValue = Number.isFinite(numericValue) ? clamp(numericValue, -8, 40) : 0
+  if (nextValue !== value) {
+    textStyle.letterSpacing = nextValue
   }
 })
 
@@ -1772,6 +1816,35 @@ function handleGlobalPointerDown(event: PointerEvent) {
   }
 }
 
+function handleStageDoubleClick(event: MouseEvent) {
+  const point = toCanvasPoint(event)
+  if (!point) {
+    return
+  }
+
+  const hit = findTopEditableTextHit(point)
+  if (!hit) {
+    return
+  }
+
+  setActiveTool('text')
+  setActiveLayer(hit.layer.id)
+  openTextEditor(hit.textElement, hit.textElement.text, {
+    layerId: hit.layer.id,
+    textId: hit.textElement.id,
+    style: hit.textElement.style,
+    mode: 'edit'
+  })
+}
+
+function handleWindowPointerMove(event: PointerEvent) {
+  handleTextEditorPointerMove(event)
+}
+
+function handleWindowPointerUp(event: PointerEvent) {
+  stopTextEditorInteraction(event)
+}
+
 function createId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -1796,7 +1869,10 @@ function cloneTextStyleSnapshot(style: TextStyleSnapshot): TextStyleSnapshot {
     size: clamp(Math.round(style.size), 8, 360),
     color: style.color,
     bold: style.bold,
-    italic: style.italic
+    italic: style.italic,
+    align: style.align === 'center' || style.align === 'right' ? style.align : 'left',
+    lineHeight: clamp(Number(style.lineHeight ?? 1.35), 1, 3),
+    letterSpacing: clamp(Number(style.letterSpacing ?? 0), -8, 40)
   }
 }
 
@@ -1806,7 +1882,10 @@ function captureCurrentTextStyle(): TextStyleSnapshot {
     size: textStyle.size,
     color: textStyle.color,
     bold: textStyle.bold,
-    italic: textStyle.italic
+    italic: textStyle.italic,
+    align: textStyle.align,
+    lineHeight: textStyle.lineHeight,
+    letterSpacing: textStyle.letterSpacing
   })
 }
 
@@ -1816,6 +1895,9 @@ function applyTextStyleSnapshot(style: TextStyleSnapshot) {
   textStyle.color = style.color || '#101114'
   textStyle.bold = style.bold === true
   textStyle.italic = style.italic === true
+  textStyle.align = style.align === 'center' || style.align === 'right' ? style.align : 'left'
+  textStyle.lineHeight = clamp(Number(style.lineHeight ?? 1.35), 1, 3)
+  textStyle.letterSpacing = clamp(Number(style.letterSpacing ?? 0), -8, 40)
 }
 
 function getLayerTextElements(layerId: string) {
@@ -2380,6 +2462,7 @@ function createLayer(name: string, fillColor: string | null = null): LayerModel 
   }
 
   layerRasterMap.set(layer.id, createLayerRaster(canvasWidth.value, canvasHeight.value, fillColor))
+  layerTextMap.set(layer.id, [])
   resetLayerStrokeHistoryFromCurrent(layer.id)
   return layer
 }
@@ -2482,6 +2565,27 @@ function refreshAllLayerThumbnails() {
   for (const layer of layers.value) {
     refreshLayerThumbnail(layer.id)
   }
+}
+
+function createLayerDisplayRaster(layerId: string) {
+  const raster = getLayerRaster(layerId)
+  if (!raster) {
+    return null
+  }
+
+  if (getLayerTextElements(layerId).length === 0) {
+    return raster
+  }
+
+  const canvas = createLayerRaster(canvasWidth.value, canvasHeight.value)
+  const context = getCanvas2DContext(canvas, true)
+  if (!context) {
+    return raster
+  }
+
+  context.drawImage(raster, 0, 0)
+  renderLayerTextElements(context, layerId, 1)
+  return canvas
 }
 
 function makeSnapshotMarker(snapshot: HistorySnapshot) {
@@ -2628,7 +2732,7 @@ async function redo() {
   lastSnapshotMarker.value = makeSnapshotMarker(snapshot)
 }
 
-function toCanvasPoint(event: PointerEvent): Point | null {
+function toCanvasPoint(event: { clientX: number; clientY: number }): Point | null {
   const stage = stageRef.value
   const scale = viewScale.value
   if (!stage || scale <= 0) {
@@ -4093,6 +4197,62 @@ function getTextCanvasFont(style: TextStyleSnapshot) {
   }
 }
 
+function getTextLineHeightPx(style: TextStyleSnapshot) {
+  return Math.max(12, Math.round(clamp(Number(style.size), 8, 360) * clamp(Number(style.lineHeight ?? 1.35), 1, 3)))
+}
+
+function measureTextLine(context: CanvasRenderingContext2D, text: string, letterSpacing: number) {
+  if (!text) {
+    return 0
+  }
+
+  if (letterSpacing === 0 || text.length <= 1) {
+    return context.measureText(text).width
+  }
+
+  let width = 0
+  for (let index = 0; index < text.length; index += 1) {
+    width += context.measureText(text[index] ?? '').width
+    if (index < text.length - 1) {
+      width += letterSpacing
+    }
+  }
+  return width
+}
+
+function drawTextLine(context: CanvasRenderingContext2D, text: string, startX: number, startY: number, letterSpacing: number) {
+  if (!text) {
+    return
+  }
+
+  if (letterSpacing === 0 || text.length <= 1) {
+    context.fillText(text, startX, startY)
+    return
+  }
+
+  let cursorX = startX
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] ?? ''
+    context.fillText(char, cursorX, startY)
+    cursorX += context.measureText(char).width
+    if (index < text.length - 1) {
+      cursorX += letterSpacing
+    }
+  }
+}
+
+function getTextLineStartX(rect: Rect, paddingX: number, availableWidth: number, lineWidth: number, align: TextAlignMode) {
+  if (align === 'center') {
+    return rect.x + paddingX + Math.max(0, (availableWidth - lineWidth) / 2)
+  }
+
+  if (align === 'right') {
+    return rect.x + paddingX + Math.max(0, availableWidth - lineWidth)
+  }
+
+  return rect.x + paddingX
+}
+
 function renderTextElement(context: CanvasRenderingContext2D, element: TextElementModel, alpha = 1) {
   const content = element.text.trim()
   if (!content) {
@@ -4102,10 +4262,11 @@ function renderTextElement(context: CanvasRenderingContext2D, element: TextEleme
   const rect = normalizeTextRect(element)
   const style = cloneTextStyleSnapshot(element.style)
   const { weight, size, family, font } = getTextCanvasFont(style)
-  const lineHeight = Math.max(12, Math.round(size * 1.35))
+  const lineHeight = getTextLineHeightPx(style)
   const paddingX = Math.max(6, Math.round(size * 0.25))
   const paddingY = Math.max(4, Math.round(size * 0.2))
   const textWidth = Math.max(20, rect.width - paddingX * 2)
+  const letterSpacing = clamp(style.letterSpacing, -8, 40)
 
   void ensureTextFontReady(family, weight, size)
 
@@ -4119,13 +4280,16 @@ function renderTextElement(context: CanvasRenderingContext2D, element: TextEleme
   context.rect(rect.x, rect.y, rect.width, rect.height)
   context.clip()
 
-  const lines = getWrappedTextLines(context, content, textWidth)
+  const lines = getWrappedTextLines(context, content, textWidth, letterSpacing)
   let cursorY = rect.y + paddingY
   for (const line of lines) {
     if (cursorY + lineHeight > rect.y + rect.height) {
       break
     }
-    context.fillText(line || ' ', rect.x + paddingX, cursorY)
+
+    const lineWidth = measureTextLine(context, line || ' ', letterSpacing)
+    const startX = getTextLineStartX(rect, paddingX, textWidth, lineWidth, style.align)
+    drawTextLine(context, line || ' ', startX, cursorY, letterSpacing)
     cursorY += lineHeight
   }
   context.restore()
@@ -4133,11 +4297,14 @@ function renderTextElement(context: CanvasRenderingContext2D, element: TextEleme
 
 function renderLayerTextElements(context: CanvasRenderingContext2D, layerId: string, alpha = 1) {
   for (const element of getLayerTextElements(layerId)) {
+    if (textEditor.active && textEditor.mode === 'edit' && textEditor.layerId === layerId && textEditor.textId === element.id) {
+      continue
+    }
     renderTextElement(context, element, alpha)
   }
 }
 
-function openTextEditor(rect: Rect, content = textDraft.value, options?: { layerId?: string | null; textId?: string | null; style?: TextStyleSnapshot; mode?: TextEditorMode }) {
+function openTextEditor(rect: Rect, content = '', options?: { layerId?: string | null; textId?: string | null; style?: TextStyleSnapshot; mode?: TextEditorMode }) {
   const nextRect = normalizeTextRect(rect)
   const style = options?.style ? cloneTextStyleSnapshot(options.style) : captureCurrentTextStyle()
   applyTextStyleSnapshot(style)
@@ -4152,12 +4319,101 @@ function openTextEditor(rect: Rect, content = textDraft.value, options?: { layer
   textEditor.height = nextRect.height
   textEditor.text = content
   textEditor.pointerId = null
-  textDraft.value = content
   clearPreviewCanvas()
+  renderComposite()
+  focusTextEditor()
+}
+
+function startTextEditorMove(event: PointerEvent) {
+  if (!textEditor.active) {
+    return
+  }
+
+  textEditor.interaction = 'move'
+  textEditor.pointerId = event.pointerId
+  textEditor.anchorX = event.clientX
+  textEditor.anchorY = event.clientY
+  textEditor.startX = textEditor.x
+  textEditor.startY = textEditor.y
+}
+
+function startTextEditorResize(handle: TextResizeHandle, event: PointerEvent) {
+  if (!textEditor.active) {
+    return
+  }
+
+  textEditor.interaction = 'resize'
+  textEditor.pointerId = event.pointerId
+  textEditor.resizeHandle = handle
+  textEditor.anchorX = event.clientX
+  textEditor.anchorY = event.clientY
+  textEditor.startX = textEditor.x
+  textEditor.startY = textEditor.y
+  textEditor.startWidth = textEditor.width
+  textEditor.startHeight = textEditor.height
+}
+
+function handleTextEditorPointerMove(event: PointerEvent) {
+  if (!textEditor.active || textEditor.pointerId !== event.pointerId) {
+    return
+  }
+
+  const deltaX = event.clientX - textEditor.anchorX
+  const deltaY = event.clientY - textEditor.anchorY
+
+  if (textEditor.interaction === 'move') {
+    const nextX = clamp(Math.round(textEditor.startX + deltaX), 0, Math.max(0, canvasWidth.value - textEditor.width))
+    const nextY = clamp(Math.round(textEditor.startY + deltaY), 0, Math.max(0, canvasHeight.value - textEditor.height))
+    textEditor.x = nextX
+    textEditor.y = nextY
+    return
+  }
+
+  if (textEditor.interaction === 'resize') {
+    const minWidth = 120
+    const minHeight = 56
+    const startLeft = textEditor.startX
+    const startTop = textEditor.startY
+    const startRight = textEditor.startX + textEditor.startWidth
+    const startBottom = textEditor.startY + textEditor.startHeight
+    let nextLeft = startLeft
+    let nextTop = startTop
+    let nextRight = startRight
+    let nextBottom = startBottom
+
+    if (textEditor.resizeHandle.includes('w')) {
+      nextLeft = clamp(Math.round(startLeft + deltaX), 0, startRight - minWidth)
+    }
+    if (textEditor.resizeHandle.includes('e')) {
+      nextRight = clamp(Math.round(startRight + deltaX), startLeft + minWidth, canvasWidth.value)
+    }
+    if (textEditor.resizeHandle.includes('n')) {
+      nextTop = clamp(Math.round(startTop + deltaY), 0, startBottom - minHeight)
+    }
+    if (textEditor.resizeHandle.includes('s')) {
+      nextBottom = clamp(Math.round(startBottom + deltaY), startTop + minHeight, canvasHeight.value)
+    }
+
+    textEditor.x = nextLeft
+    textEditor.y = nextTop
+    textEditor.width = nextRight - nextLeft
+    textEditor.height = nextBottom - nextTop
+  }
+}
+
+function stopTextEditorInteraction(event: PointerEvent) {
+  if (textEditor.pointerId !== event.pointerId) {
+    return
+  }
+
+  textEditor.pointerId = null
+  textEditor.interaction = 'idle'
+  textEditor.resizeHandle = 'se'
   focusTextEditor()
 }
 
 function cancelTextEditor() {
+  const shouldRefresh = textEditor.active && textEditor.mode === 'edit'
   textEditor.active = false
   textEditor.layerId = null
   textEditor.textId = null
@@ -4165,9 +4421,46 @@ function cancelTextEditor() {
   textEditor.interaction = 'idle'
   textEditor.text = ''
   textEditor.pointerId = null
+  textEditor.resizeHandle = 'se'
+  if (shouldRefresh) {
+    renderComposite()
+  }
 }
 
-function wrapTextLine(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+function findTextElementAtPoint(point: Point, layerId: string) {
+  const items = getLayerTextElements(layerId)
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (!item) {
+      continue
+    }
+
+    const rect = normalizeTextRect(item)
+    if (point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height) {
+      return item
+    }
+  }
+
+  return null
+}
+
+function findTopEditableTextHit(point: Point) {
+  for (let index = layers.value.length - 1; index >= 0; index -= 1) {
+    const layer = layers.value[index]
+    if (!layer || !layer.visible || layer.locked) {
+      continue
+    }
+
+    const textElement = findTextElementAtPoint(point, layer.id)
+    if (textElement) {
+      return { layer, textElement }
+    }
+  }
+
+  return null
+}
+
+function wrapTextLine(context: CanvasRenderingContext2D, text: string, maxWidth: number, letterSpacing = 0) {
   if (!text) {
     return ['']
   }
@@ -4177,7 +4470,7 @@ function wrapTextLine(context: CanvasRenderingContext2D, text: string, maxWidth:
 
   for (const char of Array.from(text)) {
     const next = `${current}${char}`
-    if (current && context.measureText(next).width > maxWidth) {
+    if (current && measureTextLine(context, next, letterSpacing) > maxWidth) {
       lines.push(current)
       current = char
       continue
@@ -4190,12 +4483,12 @@ function wrapTextLine(context: CanvasRenderingContext2D, text: string, maxWidth:
   return lines
 }
 
-function getWrappedTextLines(context: CanvasRenderingContext2D, content: string, maxWidth: number) {
+function getWrappedTextLines(context: CanvasRenderingContext2D, content: string, maxWidth: number, letterSpacing = 0) {
   const paragraphs = content.replace(/\r\n/g, '\n').split('\n')
   const lines: string[] = []
 
   for (const paragraph of paragraphs) {
-    lines.push(...wrapTextLine(context, paragraph, maxWidth))
+    lines.push(...wrapTextLine(context, paragraph, maxWidth, letterSpacing))
   }
 
   return lines
@@ -4224,7 +4517,6 @@ function finalizeTextEditor(pushSnapshot = true) {
   }
 
   const content = textEditor.text.trim()
-  textDraft.value = textEditor.text
   if (!content) {
     cancelTextEditor()
     return false
@@ -5157,6 +5449,20 @@ async function handlePointerDown(event: PointerEvent) {
       finalizeTextEditor(true)
     }
 
+    const layer = activeLayer.value
+    if (layer && !layer.locked) {
+      const hitText = findTextElementAtPoint(point, layer.id)
+      if (hitText) {
+        openTextEditor(hitText, hitText.text, {
+          layerId: layer.id,
+          textId: hitText.id,
+          style: hitText.style,
+          mode: 'edit'
+        })
+        return
+      }
+    }
+
     drawState.pointerId = event.pointerId
     drawState.drawing = true
     drawState.startPoint = point
@@ -5294,10 +5600,6 @@ async function handlePointerDown(event: PointerEvent) {
     activeTool.value
   )
   renderComposite()
-}
-
-function resetTextDraft() {
-  textDraft.value = defaultTextDraft
 }
 
 function handlePointerMove(event: PointerEvent) {
@@ -5634,6 +5936,7 @@ function initializeDocument(width: number, height: number, backgroundColor = '#f
   cancelTextEditor()
   clearFloatingSelection()
   clearAllLayerStrokeHistories()
+  layerTextMap.clear()
 
   canvasWidth.value = clamp(Math.round(width), 320, 6000)
   canvasHeight.value = clamp(Math.round(height), 240, 6000)
@@ -5691,6 +5994,7 @@ function duplicateActiveLayer() {
   if (target) {
     target.drawImage(source, 0, 0)
   }
+  layerTextMap.set(duplicated.id, serializeLayerTextElements(current.id))
   resetLayerStrokeHistoryFromCurrent(duplicated.id)
 
   const index = layers.value.findIndex((layer) => layer.id === current.id)
@@ -5718,6 +6022,7 @@ function removeActiveLayer() {
   layers.value.splice(index, 1)
   layerRasterMap.delete(removed.id)
   layerStrokeHistoryMap.delete(removed.id)
+  layerTextMap.delete(removed.id)
 
   const next = layers.value[Math.min(index, layers.value.length - 1)]
   activeLayerId.value = next?.id ?? null
@@ -5759,6 +6064,10 @@ function moveLayer(direction: 'up' | 'down') {
 }
 
 function setActiveLayer(layerId: string) {
+  if (textEditor.active && textEditor.layerId !== layerId) {
+    finalizeTextEditor(true)
+  }
+
   if (hasFloatingSelection.value && activeLayerId.value && activeLayerId.value !== layerId) {
     commitFloatingSelection(true)
   }
@@ -5864,10 +6173,28 @@ function clearActiveLayer() {
   }
 
   context.clearRect(0, 0, canvasWidth.value, canvasHeight.value)
+  layerTextMap.set(layer.id, [])
   resetLayerStrokeHistoryFromCurrent(layer.id)
   renderComposite()
   refreshLayerThumbnail(layer.id)
   pushHistorySnapshot()
+}
+
+function flattenLayerTextElements(layerId: string) {
+  const raster = getLayerRaster(layerId)
+  const context = getLayerContext(layerId)
+  const items = getLayerTextElements(layerId)
+  if (!raster || !context || items.length === 0) {
+    return false
+  }
+
+  for (const item of items) {
+    renderTextElement(context, item, 1)
+  }
+
+  layerTextMap.set(layerId, [])
+  resetLayerStrokeHistoryFromCurrent(layerId)
+  return true
 }
 
 function commitLayerMutation(layerId: string, refreshAll = false) {
@@ -5904,6 +6231,8 @@ function transformActiveLayer(transform: (context: CanvasRenderingContext2D, sou
     return
   }
 
+  flattenLayerTextElements(target.layer.id)
+
   const source = createLayerRaster(canvasWidth.value, canvasHeight.value)
   const sourceContext = getCanvas2DContext(source, true)
   if (!sourceContext) {
@@ -5923,6 +6252,8 @@ function mutateActiveLayerPixels(mutator: (data: Uint8ClampedArray, width: numbe
   if (!target) {
     return
   }
+
+  flattenLayerTextElements(target.layer.id)
 
   const width = canvasWidth.value
   const height = canvasHeight.value
@@ -6106,15 +6437,20 @@ function mergeActiveLayerDown() {
     return
   }
 
+  flattenLayerTextElements(targetLayer.id)
+
   targetContext.save()
   targetContext.globalAlpha = clamp(sourceLayer.opacity, 0, 1)
   targetContext.globalCompositeOperation = sourceLayer.blendMode
   targetContext.drawImage(sourceRaster, 0, 0)
+  renderLayerTextElements(targetContext, sourceLayer.id, clamp(sourceLayer.opacity, 0, 1))
   targetContext.restore()
 
   layers.value.splice(index, 1)
   layerRasterMap.delete(sourceLayer.id)
   layerStrokeHistoryMap.delete(sourceLayer.id)
+  layerTextMap.delete(sourceLayer.id)
+  layerTextMap.set(targetLayer.id, [])
   activeLayerId.value = targetLayer.id
   commitLayerMutation(targetLayer.id, true)
 }
@@ -6158,6 +6494,7 @@ function mergeVisibleLayers() {
     mergedContext.globalAlpha = clamp(layer.opacity, 0, 1)
     mergedContext.globalCompositeOperation = layer.blendMode
     mergedContext.drawImage(raster, 0, 0)
+    renderLayerTextElements(mergedContext, layer.id, clamp(layer.opacity, 0, 1))
     mergedContext.restore()
   }
 
@@ -6174,6 +6511,7 @@ function mergeVisibleLayers() {
     } else {
       layerRasterMap.delete(layer.id)
       layerStrokeHistoryMap.delete(layer.id)
+      layerTextMap.delete(layer.id)
     }
 
     if (index === insertAt) {
@@ -6732,7 +7070,7 @@ async function exportSvg() {
       continue
     }
 
-    const image = getLayerRaster(layer.id)?.toDataURL('image/png')
+    const image = createLayerDisplayRaster(layer.id)?.toDataURL('image/png')
     if (!image) {
       continue
     }
@@ -7149,6 +7487,9 @@ onMounted(() => {
   window.addEventListener('keyup', handleKeyup)
   window.addEventListener('resize', handleResize)
   window.addEventListener('pointerdown', handleGlobalPointerDown)
+  window.addEventListener('pointermove', handleWindowPointerMove)
+  window.addEventListener('pointerup', handleWindowPointerUp)
+  window.addEventListener('pointercancel', handleWindowPointerUp)
 })
 
 onBeforeUnmount(() => {
@@ -7156,6 +7497,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', handleKeyup)
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('pointerdown', handleGlobalPointerDown)
+  window.removeEventListener('pointermove', handleWindowPointerMove)
+  window.removeEventListener('pointerup', handleWindowPointerUp)
+  window.removeEventListener('pointercancel', handleWindowPointerUp)
 })
 </script>
 
@@ -7692,58 +8036,6 @@ onBeforeUnmount(() => {
   min-width: 118px;
 }
 
-.toolbar-group-text,
-.toolbar-group-text-preview {
-  align-items: flex-start;
-}
-
-.toolbar-textarea {
-  width: 220px;
-  min-height: 56px;
-  border: 1px solid #5c606b;
-  border-radius: 6px;
-  background: #50545d;
-  color: #f8fafc;
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 6px 8px;
-  resize: vertical;
-}
-
-.toolbar-text-meta {
-  width: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: #cbd5e1;
-  font-size: 11px;
-}
-
-.toolbar-link-btn {
-  border: none;
-  background: transparent;
-  color: #93c5fd;
-  font-size: 11px;
-  padding: 0;
-  cursor: pointer;
-}
-
-.toolbar-font-preview {
-  min-width: 180px;
-  max-width: 240px;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid #5c606b;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(84, 92, 105, 0.95), rgba(54, 59, 68, 0.95));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .toolbar-toggle {
   height: 28px;
   border: 1px solid #5c606b;
@@ -8080,6 +8372,18 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.canvas-text-editor-resize {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(96, 165, 250, 0.95);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.16);
+  cursor: nwse-resize;
+  pointer-events: auto;
+}
+
 .side-panel {
   min-height: 0;
   border-left: 1px solid #45474d;
@@ -8324,16 +8628,15 @@ onBeforeUnmount(() => {
 .menu-action:focus-visible,
 .menu-popup-item:focus-visible,
 .toolbar-select:focus-visible,
-.toolbar-textarea:focus-visible,
 .toolbar-action:focus-visible,
 .toolbar-toggle:focus-visible,
-.toolbar-link-btn:focus-visible,
 .brush-type-btn:focus-visible,
 .toolbar-color:focus-visible,
 .toolbar-number:focus-visible,
 .shape-strip-btn:focus-visible,
 .canvas-text-editor-input:focus-visible,
 .canvas-text-editor-btn:focus-visible,
+.canvas-text-editor-resize:focus-visible,
 .dialog-input:focus-visible,
 .dialog-color:focus-visible,
 .dialog-btn:focus-visible,

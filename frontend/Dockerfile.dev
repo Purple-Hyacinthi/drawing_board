@@ -1,0 +1,20 @@
+# 开发环境Dockerfile
+FROM node:20-alpine AS development
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制包管理文件
+COPY package.json package-lock.json* ./
+
+# 安装依赖
+RUN npm ci
+
+# 复制源码
+COPY . .
+
+# 暴露端口
+EXPOSE 3000 24678
+
+# 开发模式命令
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

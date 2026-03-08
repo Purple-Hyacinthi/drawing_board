@@ -1,0 +1,168 @@
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+
+# 编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 构建输出
+build/
+dist/
+out/
+target/
+*.jar
+*.war
+*.ear
+
+# 依赖目录
+node_modules/
+jspm_packages/
+
+# 缓存文件
+.cache/
+.yarn/
+.pnpm/
+.npm/
+
+# 日志文件
+*.log
+logs/
+
+# 运行时数据
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# 环境变量文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 前端构建输出
+frontend/dist/
+frontend/.vite/
+frontend/.output/
+frontend/tsconfig.tsbuildinfo
+
+# 后端构建输出
+drawing-board-backend/.gradle/
+drawing-board-backend/build/
+drawing-board-backend/out/
+
+# 测试输出
+coverage/
+*.lcov
+*.coverage
+*.coverage.xml
+
+# 系统特定文件
+*.orig
+*.pyc
+*.class
+
+# 桌面应用构建
+desktop/build/
+desktop/.qt/
+desktop/*.app
+desktop/*.exe
+desktop/*.dmg
+desktop/*.msi
+desktop/release/release-manifest.json
+desktop/release/windows-app/
+desktop/release/artifacts/
+
+# 本地工具链
+Qt/
+
+# 文档生成
+docs/_site/
+docs/.vuepress/dist
+
+# 临时文件
+tmp/
+temp/
+
+# 密钥文件
+*.pem
+*.key
+*.cert
+*.crt
+
+# 大文件
+*.zip
+*.tar
+*.gz
+*.7z
+
+# IDE配置文件
+.project
+.classpath
+.settings/
+**/.project
+**/.classpath
+**/.settings/
+
+# 操作系统临时文件
+*.tmp
+*.temp
+
+# 包管理器锁文件
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Gradle包装器（可选，如果需要提交）
+# !gradle/wrapper/gradle-wrapper.jar
+# !gradlew
+# !gradlew.bat
+
+# 开发工具配置文件
+.eslintcache
+.stylelintcache
+
+# 性能分析文件
+*.cpuprofile
+*.heapsnapshot
+
+# 本地开发数据库
+*.db-journal
+
+# 备份文件
+*.bak
+*.backup
+
+# 镜像文件
+*.iso
+*.img
+
+# 虚拟环境
+venv/
+.env/
+env/
+
+# 多媒体文件（如果需要提交请取消注释）
+# *.mp4
+# *.mp3
+# *.wav
+# *.avi
+
+# 设计文件
+*.psd
+*.ai
+*.sketch
+*.fig
+
+# 文档
+*.pdf
+*.docx
+*.xlsx
+*.pptx

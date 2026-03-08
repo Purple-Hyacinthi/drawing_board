@@ -1,0 +1,156 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# 顶层EditorConfig文件
+root = true
+
+[*]
+# 字符集
+charset = utf-8
+
+# 缩进风格
+indent_style = space
+
+# 换行符
+end_of_line = lf
+
+# 文件末尾换行
+insert_final_newline = true
+
+# 去除行尾空格
+trim_trailing_whitespace = true
+
+# 最大行宽
+max_line_length = 100
+
+[*.{java,kt,kts}]
+# Java/Kotlin文件
+indent_size = 4
+continuation_indent_size = 8
+
+[*.{js,ts,jsx,tsx,vue}]
+# JavaScript/TypeScript/Vue文件
+indent_size = 2
+quote_type = single
+
+[*.{css,scss,less}]
+# 样式文件
+indent_size = 2
+
+[*.{html,htm}]
+# HTML文件
+indent_size = 2
+
+[*.{xml,xsd,xslt}]
+# XML文件
+indent_size = 2
+
+[*.{json,jsonc}]
+# JSON文件
+indent_size = 2
+
+[*.{yml,yaml}]
+# YAML文件
+indent_size = 2
+indent_style = space
+
+[*.md]
+# Markdown文件
+indent_size = 2
+trim_trailing_whitespace = false  # Markdown中行尾空格有意义
+max_line_length = 80
+
+[*.{sql,ddl}]
+# SQL文件
+indent_size = 2
+keyword_case = upper
+identifier_case = lower
+
+[*.{sh,bash}]
+# Shell脚本
+indent_size = 2
+shell_variant = bash
+
+[*.{cpp,hpp,cc,hh}]
+# C++文件
+indent_size = 2
+indent_style = space
+
+[*.{py}]
+# Python文件
+indent_size = 4
+indent_style = space
+
+[Makefile]
+# Makefile
+indent_style = tab
+
+[*.{gradle,gradle.kts}]
+# Gradle文件
+indent_size = 2
+
+[*.{properties,ini,cfg}]
+# 配置文件
+indent_size = 2
+
+[*.{dockerfile,Dockerfile}]
+# Dockerfile
+indent_size = 4
+
+[*.{gitignore,gitattributes}]
+# Git配置文件
+indent_size = 2
+
+[*.{txt,log}]
+# 文本文件
+indent_size = 2
+trim_trailing_whitespace = false
+
+# 特定目录规则
+[drawing-board-backend/**]
+# 后端项目目录
+indent_size = 4
+
+[frontend/**]
+# 前端项目目录
+indent_size = 2
+
+[desktop/**]
+# 桌面应用目录
+indent_size = 2
+
+[docs/**]
+# 文档目录
+indent_size = 2
+
+# 排除的文件和目录
+[.{git,svn,hg}/**]
+# 版本控制目录
+indent_style = ignore
+
+[build/**]
+# 构建输出目录
+indent_style = ignore
+
+[dist/**]
+# 分发目录
+indent_style = ignore
+
+[node_modules/**]
+# Node.js模块目录
+indent_style = ignore
+
+[target/**]
+# Maven/Gradle构建目录
+indent_style = ignore
+
+[*.min.{js,css}]
+# 压缩文件
+indent_style = ignore
+
+[*.{jar,war,ear}]
+# 归档文件
+indent_style = ignore
+
+[*.{png,jpg,gif,ico,svg,pdf}]
+# 二进制文件
+indent_style = ignore

@@ -1,0 +1,90 @@
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: drawing-board-db
+    environment:
+      POSTGRES_DB: drawing_board
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存（可选）
+  redis:
+    image: redis:7-alpine
+    container_name: drawing-board-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  # 后端应用
+  backend:
+    build:
+      context: ./drawing-board-backend
+      dockerfile: Dockerfile.dev
+    container_name: drawing-board-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: drawing_board
+      DB_USER: postgres
+      DB_PASSWORD: password
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./drawing-board-backend:/app
+      - ~/.gradle:/root/.gradle
+    command: ./gradlew bootRun
+
+  # 前端应用
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: drawing-board-frontend
+    ports:
+      - "3000:3000"
+      - "24678:24678"  # Vite HMR端口
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      VITE_API_BASE_URL: http://localhost:8080/api
+    command: npm run dev -- --host 0.0.0.0
+
+  # pgAdmin（数据库管理）
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: drawing-board-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@drawingboard.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:

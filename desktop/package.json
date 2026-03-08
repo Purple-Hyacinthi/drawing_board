@@ -1,0 +1,13 @@
+{
+  "name": "drawing-board-desktop-release-tools",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "sign:keygen": "node scripts/generate-release-signing-keypair.mjs --private-out release/keys/private.pem --public-out release/keys/public.pem",
+    "release:sync": "node scripts/sync-release-manifest.mjs",
+    "release:verify": "node scripts/verify-release-assets.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "build:windows-installer": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1"
+  }
+}
