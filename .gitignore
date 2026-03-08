@@ -120,10 +120,10 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# Gradle包装器（可选，如果需要提交）
-# !gradle/wrapper/gradle-wrapper.jar
-# !gradlew
-# !gradlew.bat
+# Gradle包装器
+!drawing-board-backend/gradle/wrapper/gradle-wrapper.jar
+!drawing-board-backend/gradlew
+!drawing-board-backend/gradlew.bat
 
 # 开发工具配置文件
 .eslintcache
