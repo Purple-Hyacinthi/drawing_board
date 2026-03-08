@@ -82,7 +82,7 @@ docker-compose up -d
 ## 项目结构
 
 ```
-drawing-board/
+drawing_board/
 ├── drawing-board-backend/     # Spring Modulith后端
 │   ├── application/          # 主应用模块
 │   ├── user/                # 用户管理模块
@@ -99,9 +99,10 @@ drawing-board/
 │   │   └── views/CanvasView.vue # 纯画板页面
 │   └── vite.config.ts       # Vite配置
 ├── desktop/                 # QT桌面应用
-├── docs/                   # 项目文档
-├── database/               # 数据库脚本
-└── docker/                 # Docker配置
+├── docs/                    # 项目文档
+├── database/                # 数据库脚本
+├── scripts/                 # 开发与联调脚本
+└── docker-compose.yml       # Docker开发编排
 ```
 
 ## 开发指南
