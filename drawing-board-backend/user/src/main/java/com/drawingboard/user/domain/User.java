@@ -35,12 +35,13 @@ public class User {
     }
 
     private User(UUID id, String username, String email, String passwordHash) {
+        LocalDateTime now = LocalDateTime.now();
         this.id = id;
         this.username = username;
         this.email = email;
         this.passwordHash = passwordHash;
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        this.createdAt = now;
+        this.updatedAt = now;
     }
 
     public static User create(String username, String email, String passwordHash) {
