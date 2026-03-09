@@ -1,12 +1,13 @@
 # Drawing Board Pro
 
-一个面向中文用户的跨平台数字画板项目，包含 Vue Web 前端、Spring Boot 后端，以及 Qt 桌面封装能力。
+一个面向中文用户的跨平台数字画板项目，包含 Vue Web 前端、Spring Boot 后端，以及 Qt 桌面能力。
 
-打开即绘制，当前聚焦纯画板体验，并提供后端 API、桌面壳、发布脚本和完整项目文档。
+打开即绘制，当前聚焦纯画板体验，并提供后端 API、桌面应用、发布脚本和完整项目文档。
 
 ## 快速入口
 
 - **在线代码**: `main` 分支维护当前版本
+- **Qt 原生桌面实验分支**: `feature/qt-native-app`（独立维护，不并入 `main`）
 - **发布下载**: [v1.0.0 - Workspace Baseline](./releases/tag/v1.0.0)
 - **Windows 安装包**: `DrawingBoardPro-Setup-1.0.0.exe`
 - **Windows 便携版**: `DrawingBoardDesktop-windows-x64.zip`
@@ -17,7 +18,7 @@
 - **前端体验**: 单页纯画板模式，打开即绘制
 - **核心能力**: 图层、文字、套索选择、滤镜、导出
 - **后端接口**: 用户、画布、图层、历史与导出 API
-- **桌面封装**: 基于 Qt WebEngine 的桌面壳与 Windows 打包脚本
+- **桌面能力**: `main` 保持当前稳定路线，Qt 原生桌面版在独立分支持续演进
 - **开发支持**: 提供 Docker、CI、联调脚本与项目文档
 
 ## 技术栈
@@ -25,7 +26,7 @@
 - **前端**: Vue 3 + TypeScript + Tailwind CSS
 - **后端**: Java 21 + Spring Boot + Spring Modulith
 - **数据库**: PostgreSQL
-- **桌面封装**: Qt 6.7 + WebEngine
+- **桌面应用**: Qt 6.7
 - **构建工具**: Gradle (Kotlin DSL) + Vite + CMake
 
 ## 快速开始
@@ -121,6 +122,11 @@ cd frontend && npm run build
 - **TDD流程**: 红-绿-重构
 - **测试重点**: 核心领域逻辑、模块边界、关键联调流程
 - **测试类型**: 单元测试、集成测试、E2E测试
+
+### 分支说明
+
+- `main`: 当前主线与稳定版本
+- `feature/qt-native-app`: Qt 原生桌面版实验/开发分支，不直接并入主线
 
 - 更多脚本、联调方式和部署信息见 `docs/DEVELOPMENT.md`、`docs/DEPLOYMENT.md`、`desktop/README.md`
 
