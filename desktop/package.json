@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "build:desktop": "powershell -ExecutionPolicy Bypass -File scripts/build-desktop-devshell.ps1",
     "sign:keygen": "node scripts/generate-release-signing-keypair.mjs --private-out release/keys/private.pem --public-out release/keys/public.pem",
     "release:sync": "node scripts/sync-release-manifest.mjs",
     "release:verify": "node scripts/verify-release-assets.mjs",

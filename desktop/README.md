@@ -2,8 +2,8 @@
 
 ## 运行行为
 
-- 默认优先加载应用目录下的 `frontend/index.html`
-- 可通过环境变量 `DRAWING_BOARD_FRONTEND_URL` 覆盖为远程地址，便于开发调试
+- 桌面端已完全切换为原生 Qt Widgets，不再依赖 `frontend/index.html`
+- 中央视图、工具、图层、文件与导出链路均在桌面端原生实现
 
 ## 本地构建
 
@@ -11,14 +11,28 @@
 mkdir -p build
 cd build
 cmake ..
-cmake --build . --config Release
 ```
+
+Windows 下推荐直接使用仓库内脚本自动进入 Visual Studio Developer Shell 后再构建：
+
+```bash
+cd desktop
+npm run build:desktop
+```
+
+等价 PowerShell 命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop/scripts/build-desktop-devshell.ps1
+```
+
+如果直接执行 `cmake --build . --config Release`，可能因为未加载 MSVC Developer Shell 环境而报错找不到标准库头（例如 `type_traits`）。
 
 ## Windows 安装包
 
 ### 前置条件
 
-- Qt 6.7.3 `msvc2019_64`（包含 `qtwebengine` 与 `qtwebchannel`）
+- Qt 6.7.3 `msvc2019_64`
 - Inno Setup 6
 
 ### 一键生成

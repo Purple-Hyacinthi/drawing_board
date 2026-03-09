@@ -347,7 +347,6 @@
         <input v-model.number="textStyle.size" type="number" min="8" max="360" class="toolbar-number" />
       </div>
 
-
       <div class="toolbar-group" v-if="activeTool === 'text'">
         <span class="toolbar-label">样式</span>
         <button
@@ -701,6 +700,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { applyBrushPresetState } from '@/utils/brush-preset-state'
 import { createActiveToolColorModel, getColorControlLabel, resolveBrushStampColor, resolveLastColorTool, supportsColorControl } from '@/utils/canvas-color-state'
 import iconBrush from '@/assets/tool-icons-svg/brush.svg'
 import iconPencil from '@/assets/tool-icons-svg/pencil.svg'
@@ -711,26 +711,11 @@ import iconEyedropper from '@/assets/tool-icons-svg/eyedropper.svg'
 import iconLasso from '@/assets/tool-icons-svg/lasso.svg'
 import iconFill from '@/assets/tool-icons-svg/fill.svg'
 
-interface DesktopNativeBridge {
-  openFileDialog(callback: (filePath: string) => void): void
-  saveFileDialog(suggestedName: string, callback: (filePath: string) => void): void
-  readFileAsBase64(filePath: string, callback: (base64Content: string) => void): void
-  writeFile(filePath: string, base64Content: string, callback: (success: boolean) => void): void
-}
-
-interface DesktopWebChannel {
-  objects?: {
-    nativeBridge?: DesktopNativeBridge
-  }
-}
-
-declare global {
-  interface Window {
-    qt?: {
-      webChannelTransport?: unknown
-    }
-    QWebChannel?: new (transport: unknown, callback: (channel: DesktopWebChannel) => void) => unknown
-  }
+interface NewDocumentPayload {
+  name?: string
+  width?: number
+  height?: number
+  backgroundColor?: string
 }
 
 type ToolId = 'select' | 'brush' | 'pencil' | 'ink' | 'pen' | 'eraser' | 'eyedropper' | 'lasso' | 'fill' | 'shape' | 'text'
@@ -810,10 +795,11 @@ interface HistorySnapshot {
 }
 
 interface ProjectFile {
-  version: 1 | 2 | 3
+  version: 1 | 2 | 3 | 4
   width: number
   height: number
   documentName: string
+  backgroundColor?: string
   layers: LayerSnapshot[]
 }
 
@@ -1087,9 +1073,6 @@ const compositeCanvasRef = ref<HTMLCanvasElement | null>(null)
 const previewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const textEditorInputRef = ref<HTMLTextAreaElement | null>(null)
 
-let desktopNativeBridge: DesktopNativeBridge | null = null
-let nativeBridgeLoading: Promise<DesktopNativeBridge | null> | null = null
-
 const canvasWidth = ref(1600)
 const canvasHeight = ref(980)
 const documentName = ref('未命名 1')
@@ -1206,7 +1189,7 @@ const usageTips = [
 
 const appDisplayName = computed(() => import.meta.env.VITE_APP_NAME || 'Drawing Board Pro')
 const appVersion = __APP_VERSION__
-const runtimeModeLabel = computed(() => (isDesktopRuntime() ? '桌面版运行环境' : '浏览器运行环境'))
+const runtimeModeLabel = computed(() => '浏览器运行环境')
 
 const menuGuideSections = [
   {
@@ -1393,6 +1376,15 @@ const zoomLabel = computed(() => `${Math.round(viewScale.value * 100)}%`)
 const pressureLabel = computed(() => `${Math.round(currentPressure.value * 100)}%`)
 const hasFloatingSelection = computed(() => selectionState.active && !!selectionRaster && selectionState.width > 0 && selectionState.height > 0)
 const activeToolLabel = computed(() => tools.find((tool) => tool.id === activeTool.value)?.label ?? '画笔')
+
+function updateDocumentTitle() {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  document.title = `${documentName.value} · ${activeToolLabel.value} · ${zoomLabel.value} - Drawing Board Pro`
+}
+
 const activeShapeItem = computed(() => shapeItems.find((item) => item.value === shapeType.value) ?? shapeItems[0])
 const activeShapeLabel = computed(() => activeShapeItem.value?.label ?? '直线')
 const activeShapeIcon = computed(() => activeShapeItem.value?.icon ?? 'icon-line')
@@ -1778,6 +1770,10 @@ watch(() => textStyle.letterSpacing, (value) => {
   }
 })
 
+watch([documentName, activeToolLabel, zoomLabel], () => {
+  updateDocumentTitle()
+}, { immediate: true })
+
 watch(sidePanelVisible, () => {
   nextTick(() => {
     fitCanvasToViewport()
@@ -1949,138 +1945,6 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
     image.onload = () => resolve(image)
     image.onerror = () => reject(new Error('加载图片失败'))
     image.src = dataUrl
-  })
-}
-
-function isDesktopRuntime() {
-  return typeof window !== 'undefined' && Boolean(window.qt?.webChannelTransport)
-}
-
-function loadQWebChannelScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.QWebChannel) {
-      resolve()
-      return
-    }
-
-    const existing = document.querySelector('script[data-qt-webchannel="1"]') as HTMLScriptElement | null
-    if (existing) {
-      existing.addEventListener('load', () => resolve(), { once: true })
-      existing.addEventListener('error', () => reject(new Error('加载 QWebChannel 脚本失败')), { once: true })
-      return
-    }
-
-    const script = document.createElement('script')
-    script.setAttribute('data-qt-webchannel', '1')
-    script.src = 'qrc:///qtwebchannel/qwebchannel.js'
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error('加载 QWebChannel 脚本失败'))
-    document.head.appendChild(script)
-  })
-}
-
-async function getDesktopNativeBridge(): Promise<DesktopNativeBridge | null> {
-  if (!isDesktopRuntime()) {
-    return null
-  }
-
-  if (desktopNativeBridge) {
-    return desktopNativeBridge
-  }
-
-  if (nativeBridgeLoading) {
-    return nativeBridgeLoading
-  }
-
-  nativeBridgeLoading = (async () => {
-    try {
-      await loadQWebChannelScript()
-    } catch {
-      return null
-    }
-
-    const qWebChannelConstructor = window.QWebChannel
-    const transport = window.qt?.webChannelTransport
-    if (!qWebChannelConstructor || !transport) {
-      return null
-    }
-
-    return await new Promise<DesktopNativeBridge | null>((resolve) => {
-      try {
-        new qWebChannelConstructor(transport, (channel) => {
-          const bridge = channel.objects?.nativeBridge ?? null
-          desktopNativeBridge = bridge
-          resolve(bridge)
-        })
-      } catch {
-        resolve(null)
-      }
-    })
-  })()
-
-  const result = await nativeBridgeLoading
-  nativeBridgeLoading = null
-  return result
-}
-
-function callBridgeSaveFileDialog(bridge: DesktopNativeBridge, suggestedName: string): Promise<string> {
-  return new Promise((resolve) => {
-    try {
-      bridge.saveFileDialog(suggestedName, (filePath) => {
-        resolve(typeof filePath === 'string' ? filePath : '')
-      })
-    } catch {
-      resolve('')
-    }
-  })
-}
-
-function callBridgeOpenFileDialog(bridge: DesktopNativeBridge): Promise<string> {
-  return new Promise((resolve) => {
-    try {
-      bridge.openFileDialog((filePath) => {
-        resolve(typeof filePath === 'string' ? filePath : '')
-      })
-    } catch {
-      resolve('')
-    }
-  })
-}
-
-function callBridgeReadFileAsBase64(bridge: DesktopNativeBridge, filePath: string): Promise<string> {
-  return new Promise((resolve) => {
-    try {
-      bridge.readFileAsBase64(filePath, (base64Content) => {
-        resolve(typeof base64Content === 'string' ? base64Content : '')
-      })
-    } catch {
-      resolve('')
-    }
-  })
-}
-
-function callBridgeWriteFile(bridge: DesktopNativeBridge, filePath: string, base64Content: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    try {
-      bridge.writeFile(filePath, base64Content, (success) => {
-        resolve(Boolean(success))
-      })
-    } catch {
-      resolve(false)
-    }
-  })
-}
-
-function blobToBase64Payload(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : ''
-      const splitIndex = result.indexOf(',')
-      resolve(splitIndex >= 0 ? result.slice(splitIndex + 1) : '')
-    }
-    reader.onerror = () => reject(new Error('转换导出数据失败'))
-    reader.readAsDataURL(blob)
   })
 }
 
@@ -2762,7 +2626,6 @@ function normalizePressure(event: PointerEvent) {
 function isShapeTool(tool: ToolId) {
   return tool === 'shape'
 }
-
 
 function drawRegularPolygon(context: CanvasRenderingContext2D, centerX: number, centerY: number, radius: number, sides: number, rotation = -Math.PI / 2) {
   if (sides < 3) {
@@ -6074,30 +5937,48 @@ function setActiveLayer(layerId: string) {
   activeLayerId.value = layerId
 }
 
-function toggleLayerVisible(layerId: string) {
+function setLayerVisibility(layerId: string, visible: boolean) {
   finalizeFloatingSelection()
 
   const layer = layers.value.find((item) => item.id === layerId)
-  if (!layer) {
+  if (!layer || layer.visible === visible) {
     return
   }
 
-  layer.visible = !layer.visible
+  layer.visible = visible
   renderComposite()
   refreshLayerThumbnail(layerId)
   pushHistorySnapshot()
 }
 
-function toggleLayerLocked(layerId: string) {
-  finalizeFloatingSelection()
-
+function toggleLayerVisible(layerId: string) {
   const layer = layers.value.find((item) => item.id === layerId)
   if (!layer) {
     return
   }
 
-  layer.locked = !layer.locked
+  setLayerVisibility(layerId, !layer.visible)
+}
+
+function setLayerLocked(layerId: string, locked: boolean) {
+  finalizeFloatingSelection()
+
+  const layer = layers.value.find((item) => item.id === layerId)
+  if (!layer || layer.locked === locked) {
+    return
+  }
+
+  layer.locked = locked
   pushHistorySnapshot()
+}
+
+function toggleLayerLocked(layerId: string) {
+  const layer = layers.value.find((item) => item.id === layerId)
+  if (!layer) {
+    return
+  }
+
+  setLayerLocked(layerId, !layer.locked)
 }
 
 function commitLayerName() {
@@ -6117,19 +5998,13 @@ function commitLayerName() {
 }
 
 function handleActiveLayerOpacityInput(event: Event) {
-  const layer = activeLayer.value
-  if (!layer) {
-    return
-  }
-
   const target = event.target as HTMLInputElement
   const value = Number.parseFloat(target.value)
   if (!Number.isFinite(value)) {
     return
   }
 
-  layer.opacity = clamp(value / 100, 0, 1)
-  renderComposite()
+  previewActiveLayerOpacity(value)
 }
 
 function commitLayerAppearance() {
@@ -6137,6 +6012,21 @@ function commitLayerAppearance() {
     refreshLayerThumbnail(activeLayerId.value)
   }
   pushHistorySnapshot()
+}
+
+function previewActiveLayerOpacity(opacity: number) {
+  const layer = activeLayer.value
+  if (!layer) {
+    return
+  }
+
+  const nextOpacity = clamp(opacity / 100, 0, 1)
+  if (Math.abs(layer.opacity - nextOpacity) < 0.001) {
+    return
+  }
+
+  layer.opacity = nextOpacity
+  renderComposite()
 }
 
 function handleActiveLayerBlendChange(event: Event) {
@@ -6581,51 +6471,8 @@ function toCssBlendMode(mode: LayerBlendMode) {
   return mode === 'source-over' ? 'normal' : mode
 }
 
-async function openNativePath(bridge: DesktopNativeBridge, filePath: string) {
-  clearFloatingSelection()
-
-  const extension = getFileExtension(filePath)
-  const base64Content = await callBridgeReadFileAsBase64(bridge, filePath)
-  if (!base64Content) {
-    return
-  }
-
-  if (isProjectExtension(extension)) {
-    const text = base64ToText(base64Content)
-    const parsed = JSON.parse(text)
-    const project = parseProjectFile(parsed)
-    if (!project) {
-      return
-    }
-
-    await openProject(project)
-    return
-  }
-
-  if (isImageExtension(extension)) {
-    const mimeType = getMimeByExtension(extension)
-    const dataUrl = `data:${mimeType};base64,${base64Content}`
-    const layerName = pathBaseName(filePath).replace(/\.[^.]+$/u, '') || `图层 ${layers.value.length + 1}`
-    await importImageDataUrl(dataUrl, layerName, true)
-  }
-}
-
 async function openLocalFile() {
   clearFloatingSelection()
-
-  const bridge = await getDesktopNativeBridge()
-  if (bridge) {
-    const filePath = (await callBridgeOpenFileDialog(bridge)).trim()
-    if (!filePath) {
-      return
-    }
-
-    try {
-      await openNativePath(bridge, filePath)
-    } catch {
-    }
-    return
-  }
 
   if (!openFileInputRef.value) {
     return
@@ -6637,25 +6484,6 @@ async function openLocalFile() {
 
 async function openImportImage() {
   finalizeFloatingSelection()
-
-  const bridge = await getDesktopNativeBridge()
-  if (bridge) {
-    const filePath = (await callBridgeOpenFileDialog(bridge)).trim()
-    if (!filePath) {
-      return
-    }
-
-    const extension = getFileExtension(filePath)
-    if (!isImageExtension(extension)) {
-      return
-    }
-
-    try {
-      await openNativePath(bridge, filePath)
-    } catch {
-    }
-    return
-  }
 
   if (!importImageInputRef.value) {
     return
@@ -6687,60 +6515,6 @@ async function fileToText(file: File) {
     reader.onerror = () => reject(new Error('读取文本失败'))
     reader.readAsText(file)
   })
-}
-
-function pathBaseName(filePath: string) {
-  const normalized = filePath.replace(/\\/g, '/')
-  const index = normalized.lastIndexOf('/')
-  return index >= 0 ? normalized.slice(index + 1) : normalized
-}
-
-function getFileExtension(filePath: string) {
-  const name = pathBaseName(filePath).toLocaleLowerCase()
-  const index = name.lastIndexOf('.')
-  return index >= 0 ? name.slice(index + 1) : ''
-}
-
-function isProjectExtension(extension: string) {
-  return extension === 'dbp' || extension === 'json'
-}
-
-function isImageExtension(extension: string) {
-  return ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'].includes(extension)
-}
-
-function getMimeByExtension(extension: string) {
-  if (extension === 'jpg' || extension === 'jpeg') {
-    return 'image/jpeg'
-  }
-
-  if (extension === 'svg') {
-    return 'image/svg+xml'
-  }
-
-  if (extension === 'gif') {
-    return 'image/gif'
-  }
-
-  if (extension === 'bmp') {
-    return 'image/bmp'
-  }
-
-  if (extension === 'webp') {
-    return 'image/webp'
-  }
-
-  return 'image/png'
-}
-
-function base64ToText(base64Content: string) {
-  const binary = atob(base64Content)
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index)
-  }
-
-  return new TextDecoder().decode(bytes)
 }
 
 function isImageFile(file: File) {
@@ -6824,10 +6598,11 @@ function parseProjectFile(raw: unknown): ProjectFile | null {
   }
 
   return {
-    version: value.version === 3 ? 3 : value.version === 2 ? 2 : 1,
+    version: value.version === 4 ? 4 : value.version === 3 ? 3 : value.version === 2 ? 2 : 1,
     width,
     height,
     documentName: typeof value.documentName === 'string' && value.documentName.trim() ? value.documentName : '未命名 1',
+    backgroundColor: typeof value.backgroundColor === 'string' && value.backgroundColor.trim() ? value.backgroundColor : '#ffffff',
     layers: value.layers
       .map((layer) => {
         const item = layer as Partial<LayerSnapshot>
@@ -6885,7 +6660,7 @@ async function openProject(project: ProjectFile) {
   canvasWidth.value = clamp(Math.round(project.width), 320, 6000)
   canvasHeight.value = clamp(Math.round(project.height), 240, 6000)
   documentName.value = project.documentName || '未命名 1'
-  documentBackgroundColor.value = '#ffffff'
+  documentBackgroundColor.value = project.backgroundColor || '#ffffff'
   syncDisplayCanvasSize()
 
   layers.value = []
@@ -6974,28 +6749,8 @@ function downloadBlob(fileName: string, blob: Blob) {
 }
 
 async function saveBlobByUserPath(defaultFileName: string, blob: Blob) {
-  const bridge = await getDesktopNativeBridge()
-  if (!bridge) {
-    downloadBlob(defaultFileName, blob)
-    return true
-  }
-
-  const selectedPath = (await callBridgeSaveFileDialog(bridge, defaultFileName)).trim()
-  if (!selectedPath) {
-    return false
-  }
-
-  try {
-    const base64Payload = await blobToBase64Payload(blob)
-    const writeSuccess = await callBridgeWriteFile(bridge, selectedPath, base64Payload)
-    if (!writeSuccess) {
-      downloadBlob(defaultFileName, blob)
-    }
-    return writeSuccess
-  } catch {
-    downloadBlob(defaultFileName, blob)
-    return false
-  }
+  downloadBlob(defaultFileName, blob)
+  return true
 }
 
 async function saveProject() {
@@ -7006,6 +6761,7 @@ async function saveProject() {
     width: canvasWidth.value,
     height: canvasHeight.value,
     documentName: documentName.value,
+    backgroundColor: documentBackgroundColor.value,
     layers: layers.value.map((layer) => ({
       id: layer.id,
       name: layer.name,
@@ -7061,7 +6817,7 @@ async function exportSvg() {
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-    `<rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>`
+    `<rect x="0" y="0" width="${width}" height="${height}" fill="${escapeXmlAttribute(documentBackgroundColor.value || '#ffffff')}"/>`
   ]
 
   for (const layer of layers.value) {
@@ -7099,17 +6855,25 @@ function closeNewDocumentDialog() {
   showNewDocumentDialog.value = false
 }
 
-function confirmCreateDocument() {
-  clearFloatingSelection()
-
-  const width = clamp(Math.round(newDocumentForm.width || canvasWidth.value), 320, 6000)
-  const height = clamp(Math.round(newDocumentForm.height || canvasHeight.value), 240, 6000)
-  const name = newDocumentForm.name.trim() || `未命名 ${Date.now().toString().slice(-4)}`
-  const backgroundColor = newDocumentForm.backgroundColor || '#ffffff'
+function createDocumentFromPayload(payload: NewDocumentPayload = {}) {
+  const width = clamp(Math.round(payload.width ?? canvasWidth.value), 320, 6000)
+  const height = clamp(Math.round(payload.height ?? canvasHeight.value), 240, 6000)
+  const name = payload.name?.trim() || `未命名 ${Date.now().toString().slice(-4)}`
+  const backgroundColor = payload.backgroundColor || documentBackgroundColor.value || '#ffffff'
 
   documentName.value = name
   initializeDocument(width, height, backgroundColor)
   showNewDocumentDialog.value = false
+}
+
+function confirmCreateDocument() {
+  clearFloatingSelection()
+  createDocumentFromPayload({
+    name: newDocumentForm.name,
+    width: newDocumentForm.width,
+    height: newDocumentForm.height,
+    backgroundColor: newDocumentForm.backgroundColor
+  })
 }
 
 function handleBrushPresetChange() {
@@ -7133,19 +6897,27 @@ function applyBrushPreset(presetId: BrushPresetId) {
     return
   }
 
+  const currentPreset = brushPresetItems.find((item) => item.id === brushPresetId.value)
+
+  const nextPresetState = applyBrushPresetState({
+    currentColor: brushColor.value,
+    currentPresetColor: currentPreset?.color,
+    preset
+  })
+
   brushPresetId.value = presetId
   brushName.value = preset.label
-  brushColor.value = preset.color
-  brushSize.value = preset.size
-  brushOpacity.value = preset.opacity
+  brushColor.value = nextPresetState.color
+  brushSize.value = nextPresetState.size
+  brushOpacity.value = nextPresetState.opacity
 
-  brushStyle.angle = preset.style.angle
-  brushStyle.roundness = preset.style.roundness
-  brushStyle.spacing = preset.style.spacing
-  brushStyle.hardness = preset.style.hardness
-  brushStyle.flow = preset.style.flow
-  brushStyle.sizeMode = preset.style.sizeMode
-  brushStyle.sizeJitter = preset.style.sizeJitter
+  brushStyle.angle = nextPresetState.style.angle
+  brushStyle.roundness = nextPresetState.style.roundness
+  brushStyle.spacing = nextPresetState.style.spacing
+  brushStyle.hardness = nextPresetState.style.hardness
+  brushStyle.flow = nextPresetState.style.flow
+  brushStyle.sizeMode = nextPresetState.style.sizeMode
+  brushStyle.sizeJitter = nextPresetState.style.sizeJitter
 
   setActiveTool(preset.tool)
 }
