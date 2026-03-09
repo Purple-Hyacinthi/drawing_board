@@ -347,10 +347,6 @@
         <input v-model.number="textStyle.size" type="number" min="8" max="360" class="toolbar-number" />
       </div>
 
-      <div class="toolbar-group" v-if="activeTool === 'text'">
-        <span class="toolbar-label">文字颜色</span>
-        <input v-model="textStyle.color" type="color" class="toolbar-color" />
-      </div>
 
       <div class="toolbar-group" v-if="activeTool === 'text'">
         <span class="toolbar-label">样式</span>
@@ -411,8 +407,8 @@
       </div>
 
       <div class="toolbar-group" v-if="showColorControl">
-        <span class="toolbar-label">颜色</span>
-        <input v-model="brushColor" type="color" class="toolbar-color" />
+        <span class="toolbar-label">{{ activeColorLabel }}</span>
+        <input v-model="activeToolColor" type="color" class="toolbar-color" />
       </div>
 
       <div class="toolbar-group" v-if="showSizeControl">
@@ -537,10 +533,10 @@
       </section>
 
       <aside v-if="sidePanelVisible" class="side-panel">
-        <section class="panel-card">
-          <h3>颜色和拾色器</h3>
+        <section class="panel-card" v-if="showColorControl">
+          <h3>{{ activeColorPanelTitle }}</h3>
           <div class="color-row">
-            <input v-model="brushColor" type="color" class="panel-color" />
+            <input v-model="activeToolColor" type="color" class="panel-color" />
             <button type="button" class="panel-btn" @click="setActiveTool('eyedropper')">拾色器</button>
           </div>
           <div class="swatch-grid">
@@ -550,7 +546,7 @@
               type="button"
               class="swatch"
               :style="{ backgroundColor: preset }"
-              @click="brushColor = preset"
+              @click="activeToolColor = preset"
             ></button>
           </div>
         </section>
@@ -705,6 +701,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { createActiveToolColorModel, getColorControlLabel, resolveBrushStampColor, resolveLastColorTool, supportsColorControl } from '@/utils/canvas-color-state'
 import iconBrush from '@/assets/tool-icons-svg/brush.svg'
 import iconPencil from '@/assets/tool-icons-svg/pencil.svg'
 import iconInk from '@/assets/tool-icons-svg/ink.svg'
@@ -1113,7 +1110,7 @@ const newDocumentForm = reactive({
 })
 
 const activeTool = ref<ToolId>('brush')
-const lastPaintTool = ref<ToolId>('brush')
+const lastColorTool = ref<ToolId>('brush')
 const brushPresetId = ref<BrushPresetId>('brush')
 const brushName = ref('画笔')
 const brushColor = ref('#000000')
@@ -1401,8 +1398,11 @@ const activeShapeLabel = computed(() => activeShapeItem.value?.label ?? '直线'
 const activeShapeIcon = computed(() => activeShapeItem.value?.icon ?? 'icon-line')
 const showPresetControl = computed(() => activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink' || activeTool.value === 'pen')
 const showColorControl = computed(() => {
-  return activeTool.value === 'brush' || activeTool.value === 'pencil' || activeTool.value === 'ink' || activeTool.value === 'pen' || activeTool.value === 'shape' || activeTool.value === 'fill'
+  return supportsColorControl(activeTool.value)
 })
+const activeColorLabel = computed(() => getColorControlLabel(activeTool.value))
+const activeColorPanelTitle = computed(() => `${activeColorLabel.value}和拾色器`)
+const activeToolColor = createActiveToolColorModel({ activeTool, brushColor, textStyle })
 const showSizeControl = computed(() => {
   if (activeTool.value === 'select' || activeTool.value === 'lasso' || activeTool.value === 'fill' || activeTool.value === 'text') {
     return false
@@ -2763,9 +2763,6 @@ function isShapeTool(tool: ToolId) {
   return tool === 'shape'
 }
 
-function isBrushTool(tool: ToolId) {
-  return isPaintTool(tool) || tool === 'eraser'
-}
 
 function drawRegularPolygon(context: CanvasRenderingContext2D, centerX: number, centerY: number, radius: number, sides: number, rotation = -Math.PI / 2) {
   if (sides < 3) {
@@ -2972,6 +2969,7 @@ function getSpacing(tool: ToolId, config?: BrushRenderConfig) {
 
 function drawBrushStamp(context: CanvasRenderingContext2D, point: Point, width: number, tool: ToolId, config?: BrushRenderConfig) {
   const renderConfig = config ?? createBrushRenderConfig()
+  const stampColor = resolveBrushStampColor(tool, renderConfig.color)
   const radius = Math.max(0.45, width / 2)
   const widthRange = getBrushWidthRange(tool, renderConfig)
   const roundness = clamp(renderConfig.style.roundness / 100, 0.1, 1)
@@ -2985,7 +2983,7 @@ function drawBrushStamp(context: CanvasRenderingContext2D, point: Point, width: 
     context.globalAlpha = clamp((renderConfig.opacity / 100) * (renderConfig.style.flow / 100), 0.02, 1)
   } else {
     context.globalCompositeOperation = 'source-over'
-    context.fillStyle = renderConfig.color
+    context.fillStyle = stampColor
   }
 
   const hardness = clamp(renderConfig.style.hardness / 100, 0.03, 1)
@@ -2995,7 +2993,6 @@ function drawBrushStamp(context: CanvasRenderingContext2D, point: Point, width: 
   context.scale(1, roundness)
 
   if (tool === 'pencil') {
-    context.fillStyle = '#555555'
     context.globalAlpha = clamp(renderConfig.opacity / 100, 0.7, 0.8)
     context.beginPath()
     context.arc(0, 0, radius, 0, Math.PI * 2)
@@ -3017,9 +3014,8 @@ function drawBrushStamp(context: CanvasRenderingContext2D, point: Point, width: 
       context.fill()
     }
   } else if (tool === 'brush') {
-    context.fillStyle = '#000000'
     context.globalAlpha = clamp((renderConfig.opacity / 100) * 0.7, 0.18, 0.56)
-    context.shadowColor = 'rgba(0, 0, 0, 0.2)'
+    context.shadowColor = stampColor
     context.shadowBlur = Math.max(5, radius * 2.4)
     context.beginPath()
     context.arc(0, 0, radius, 0, Math.PI * 2)
@@ -3034,7 +3030,6 @@ function drawBrushStamp(context: CanvasRenderingContext2D, point: Point, width: 
     context.arc(0, 0, radius * 1.9, 0, Math.PI * 2)
     context.fill()
   } else {
-    context.fillStyle = '#000000'
     context.globalAlpha = tool === 'ink' ? 1 : clamp(renderConfig.opacity / 100, 0.02, 1)
     context.beginPath()
     context.arc(0, 0, radius, 0, Math.PI * 2)
@@ -4043,8 +4038,9 @@ function pickColor(point: Point) {
     return
   }
 
-  brushColor.value = rgbToHex(data[0], data[1], data[2])
-  activeTool.value = lastPaintTool.value
+  const sampledColor = rgbToHex(data[0], data[1], data[2])
+  setActiveTool(lastColorTool.value)
+  activeToolColor.value = sampledColor
 }
 
 function hexToRgba(hex: string, alpha = 255): [number, number, number, number] {
@@ -5314,12 +5310,15 @@ function setActiveTool(tool: ToolId) {
     commitFloatingSelection(true)
   }
 
+  lastColorTool.value = resolveLastColorTool({
+    nextTool: tool,
+    previousTool,
+    lastColorTool: lastColorTool.value
+  })
+
   activeTool.value = tool
   hoverStrokePreviewId.value = null
   clearPreviewCanvas()
-  if (isBrushTool(tool) || isShapeTool(tool)) {
-    lastPaintTool.value = tool
-  }
 }
 
 function getBrushPresetByTool(tool: PaintToolId) {
