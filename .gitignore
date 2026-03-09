@@ -91,6 +91,7 @@ docs/.vuepress/dist
 # 临时文件
 tmp/
 temp/
+.worktrees/
 
 # 密钥文件
 *.pem
